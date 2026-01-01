@@ -301,7 +301,7 @@
               <div class="mt-5">
                 <h3 class="text-sm font-semibold text-neutral-900">Book launch</h3>
                 <div class="mt-3">
-                  <label class="block text-sm font-medium text-neutral-800">13. Would you like to reserve a signed copy of Sukritya’s upcoming book?</label>
+                  <label class="block text-sm font-medium text-neutral-800">12. Would you like to reserve a signed copy of Sukritya’s upcoming book?</label>
                   <select name="reserve_signed_book" class="mt-2 w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15">
                     <option value="">Select</option>
                     <option value="yes" <%= values.reserve_signed_book==='yes'?'selected':'' %>>Yes</option>
@@ -315,7 +315,7 @@
               <div class="mt-8 border-t border-neutral-200 pt-6">
                 <h3 class="text-sm font-semibold text-neutral-900">Shaligram Darshan</h3>
                 <div class="mt-3">
-                  <label class="block text-sm font-medium text-neutral-800">14. Would you like to participate in Shaligram Darshan during the event?</label>
+                  <label class="block text-sm font-medium text-neutral-800">13. Would you like to participate in Shaligram Darshan during the event?</label>
                   <select name="shaligram_darshan" class="mt-2 w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15">
                     <option value="">Select</option>
                     <option value="yes" <%= values.shaligram_darshan==='yes'?'selected':'' %>>Yes</option>
@@ -338,14 +338,14 @@
               
 
                 <div class="mt-3">
-                  <label class="block text-sm font-medium text-neutral-800">15. What is the biggest question you have about Rudraksha?</label>
+                  <label class="block text-sm font-medium text-neutral-800">14. What is the biggest question you have about Rudraksha?</label>
                   <textarea name="biggest_question" rows="4" class="mt-2 w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15" placeholder="Write your question here"><%= values.biggest_question || '' %></textarea>
                   <% if (errors.biggest_question) { %><p class="mt-2 text-sm text-red-600"><%= errors.biggest_question %></p><% } %>
                 </div>
 
                 <div class="mt-4 grid gap-4 md:grid-cols-2">
                   <div>
-                    <label class="block text-sm font-medium text-neutral-800">16. How did you first discover Nepa Rudraksha?</label>
+                    <label class="block text-sm font-medium text-neutral-800">15. How did you first discover Nepa Rudraksha?</label>
                     <select name="discovered_from" class="mt-2 w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15">
                       <option value="">Select</option>
                       <option value="instagram" <%= values.discovered_from==='instagram'?'selected':'' %>>Instagram</option>
@@ -367,7 +367,7 @@
                       
                 
                 <div class="mt-3">
-                  <label class="block text-sm font-medium text-neutral-800">18. Anything you’d like us to know or arrange for you during the event? (optional)</label>
+                  <label class="block text-sm font-medium text-neutral-800">16. Anything you’d like us to know or arrange for you during the event? (optional)</label>
                   <textarea name="arrangement_notes" rows="4" class="mt-2 w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15" placeholder="Any preferences or notes"><%= values.arrangement_notes || '' %></textarea>
                 </div>
              
