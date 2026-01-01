@@ -1,0 +1,25 @@
+{
+  "name": "shivaratri-survey",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "nodemon server.js",
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "compression": "^1.8.1",
+    "dotenv": "^17.2.3",
+    "ejs": "^3.1.10",
+    "express": "^5.2.1",
+    "helmet": "^8.1.0",
+    "mysql2": "^3.16.0",
+    "zod": "^4.3.4"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.11"
+  }
+}

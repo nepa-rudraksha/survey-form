@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Maha Shivaratri 2026 — Survey</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: { extend: { colors: { primary: "#C19A5B" } } },
+      };
+    </script>
+  </head>
+
+  <body class="min-h-screen bg-neutral-50 text-neutral-900 overflow-x-hidden">
+    <header class="border-b border-neutral-200 bg-white">
+      <div
+        class="mx-auto max-w-6xl px-4 py-6 md:px-6 md:py-10"
+        style="
+          background:
+            radial-gradient(900px circle at 15% 10%, rgba(193,154,91,.18), transparent 58%),
+            radial-gradient(800px circle at 85% 0%, rgba(193,154,91,.12), transparent 60%),
+            linear-gradient(180deg, #ffffff, #fafafa);
+        "
+      >
+        <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between md:gap-6 min-w-0">
+          <div class="min-w-0">
+            <p class="text-xs uppercase tracking-wider text-neutral-600">Nepa Rudraksha presents</p>
+
+            <h1 class="mt-2 text-2xl md:text-3xl font-semibold tracking-tight leading-tight">
+              Maha Shivaratri 2026 — Secrets of Rudraksha
+            </h1>
+
+            <p class="mt-2 text-sm md:text-base text-neutral-600 leading-relaxed">
+              Bangalore Experience with Sukritya Khatiwada • Rare Rudraksha Exhibition • Free Consultation
+            </p>
+          </div>
+
+          <div class="w-full md:w-auto md:shrink-0">
+            <div class="rounded-2xl border border-primary/30 bg-white px-5 py-4 shadow-sm">
+              <p class="text-sm font-semibold text-primary">Feb 14 (Eve of Shivaratri)</p>
+              <p class="mt-1 text-sm text-neutral-600">This survey helps us plan with care.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="mx-auto w-full max-w-4xl px-4 py-8 pb-[calc(env(safe-area-inset-bottom)+6rem)]">
+      <div class="w-full max-w-full rounded-2xl border border-neutral-200 bg-white shadow-sm overflow-hidden">
+        <div class="p-5 md:p-8">
+          <div class="space-y-4">
+            <p class="leading-relaxed text-neutral-800">
+              Namaste.<br />
+              We are planning a special Rudraksha Experience and Rare Rudraksha Exhibition in Bangalore —
+              <span class="font-semibold text-primary">“Secrets of Rudraksha with Sukritya Khatiwada,”</span>
+              powered by Nepa Rudraksha.
+            </p>
+
+            <ul class="grid gap-2 text-sm text-neutral-700 md:grid-cols-2">
+              <li class="flex gap-2 min-w-0">
+                <span class="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary"></span>
+                <span class="min-w-0 break-words">Display of rare Rudrakshas</span>
+              </li>
+              <li class="flex gap-2 min-w-0">
+                <span class="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary"></span>
+                <span class="min-w-0 break-words">Free astrology-based Rudraksha consultation</span>
+              </li>
+              <li class="flex gap-2 min-w-0">
+                <span class="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary"></span>
+                <span class="min-w-0 break-words">Talk by Sukritya</span>
+              </li>
+              <li class="flex gap-2 min-w-0">
+                <span class="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary"></span>
+                <span class="min-w-0 break-words">Launch of Sukritya’s upcoming book</span>
+              </li>
+              <li class="flex gap-2 min-w-0">
+                <span class="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-primary"></span>
+                <span class="min-w-0 break-words">Rare Shaligram Darshan</span>
+              </li>
+            </ul>
+
+            <p class="text-sm text-neutral-600">
+              This short form helps us understand your interest and plan the experience thoughtfully.
+            </p>
+          </div>
+
+          <div class="mt-8 flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-neutral-50 p-4 md:flex-row md:items-center md:justify-between">
+            <div class="min-w-0">
+              <p class="text-sm font-semibold text-neutral-900">Form layout</p>
+              <p class="text-xs text-neutral-600 break-words">Choose a step-by-step experience or fill everything on a single page.</p>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" id="modeStep" class="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold text-neutral-900 shadow-sm hover:bg-neutral-50">
+                Step-by-step
+              </button>
+              <button type="button" id="modeSingle" class="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold text-neutral-900 shadow-sm hover:bg-neutral-50">
+                Single page
+              </button>
+            </div>
+          </div>
+
+          <div id="wizardProgress" class="mt-6 hidden">
+            <div class="flex items-center justify-between min-w-0 gap-3">
+              <p class="text-sm font-semibold text-neutral-900">Progress</p>
+              <p id="progressText" class="text-sm text-neutral-600 shrink-0"></p>
+            </div>
+            <div class="mt-2 h-2 w-full rounded-full bg-neutral-100">
+              <div id="progressBar" class="h-2 rounded-full bg-primary" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <form action="/submit" method="POST" class="mt-8 space-y-10" id="surveyForm">
+            <!-- STEP 1 -->
+            <section class="step-section" data-step="1">
+              <div class="flex items-center justify-between gap-4 min-w-0">
+                <h2 class="text-lg font-semibold text-neutral-900 min-w-0 break-words">Section 1 — Basic details</h2>
+                <span class="step-badge hidden shrink-0 rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-700">Step 1</span>
+              </div>
+
+              <div class="mt-4 grid gap-4 md:grid-cols-2">
+                <div>
+                  <label class="block text-sm font-medium text-neutral-800">1. Full name</label>
+                  <input name="full_name" value="<%= values.full_name || '' %>" class="mt-2 w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15" placeholder="Your full name" />
+                  <% if (errors.full_name) { %><p class="mt-2 text-sm text-red-600"><%= errors.full_name %></p><% } %>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-neutral-800">2. Mobile number</label>
+                  <input name="mobile_number" value="<%= values.mobile_number || '' %>" class="mt-2 w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15" placeholder="e.g. +91..." />
+                  <% if (errors.mobile_number) { %><p class="mt-2 text-sm text-red-600"><%= errors.mobile_number %></p><% } %>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-neutral-800">3. Email address (optional)</label>
+                  <input name="email" value="<%= values.email || '' %>" class="mt-2 w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15" placeholder="you@example.com" />
+                  <% if (errors.email) { %><p class="mt-2 text-sm text-red-600"><%= errors.email %></p><% } %>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-neutral-800">4. Are you currently based in Bangalore?</label>
+                  <select name="based_in_bangalore" class="mt-2 w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15">
+                    <option value="">Select</option>
+                    <option value="live" <%= values.based_in_bangalore==='live'?'selected':'' %>>Yes — I live in Bangalore</option>
+                    <option value="travel" <%= values.based_in_bangalore==='travel'?'selected':'' %>>I travel frequently to Bangalore</option>
+                    <option value="maybe" <%= values.based_in_bangalore==='maybe'?'selected':'' %>>No, but I may be able to come for the event</option>
+                    <option value="no" <%= values.based_in_bangalore==='no'?'selected':'' %>>No</option>
+                  </select>
+                  <% if (errors.based_in_bangalore) { %><p class="mt-2 text-sm text-red-600"><%= errors.based_in_bangalore %></p><% } %>
+                </div>
+              </div>
+            </section>
+
+            <!-- STEP 2 -->
+            <section class="step-section" data-step="2">
+              <div class="flex items-center justify-between gap-4 min-w-0">
+                <h2 class="text-lg font-semibold text-neutral-900 min-w-0 break-words">Section 2 — Your relationship with Rudraksha</h2>
+                <span class="step-badge hidden shrink-0 rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-700">Step 2</span>
+              </div>
+
+              <div class="mt-4 grid gap-4 md:grid-cols-2">
+                <div>
+                  <label class="block text-sm font-medium text-neutral-800">5. Have you purchased from Nepa Rudraksha?</label>
+                  <select name="has_purchased" class="mt-2 w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15">
+                    <option value="">Select</option>
+                    <option value="wearing" <%= values.has_purchased==='wearing'?'selected':'' %>>Yes — I’m currently wearing it</option>
+                    <option value="not_wearing" <%= values.has_purchased==='not_wearing'?'selected':'' %>>Yes — but I’m not wearing it right now</option>
+                    <option value="plan_to" <%= values.has_purchased==='plan_to'?'selected':'' %>>Not yet — but I plan to</option>
+                    <option value="no" <%= values.has_purchased==='no'?'selected':'' %>>No</option>
+                  </select>
+                  <% if (errors.has_purchased) { %><p class="mt-2 text-sm text-red-600"><%= errors.has_purchased %></p><% } %>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-neutral-800">6. Which Rudraksha/Mala do you currently wear? (optional)</label>
+                  <input name="currently_wear" value="<%= values.currently_wear || '' %>" class="mt-2 w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15" placeholder="Example: 5 Mukhi Mala" />
+                </div>
+              </div>
+            </section>
+
+            <!-- STEP 3 -->
+            <section class="step-section" data-step="3">
+              <div class="flex items-center justify-between gap-4 min-w-0">
+                <h2 class="text-lg font-semibold text-neutral-900 min-w-0 break-words">Section 3 — Your interest in the event</h2>
+                <span class="step-badge hidden shrink-0 rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-700">Step 3</span>
+              </div>
+
+              <div class="mt-4 grid gap-4 md:grid-cols-2">
+                <div>
+                  <label class="block text-sm font-medium text-neutral-800">7. Would you be interested in attending?</label>
+                  <select name="attending_interest" class="mt-2 w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15">
+                    <option value="">Select</option>
+                    <option value="definitely" <%= values.attending_interest==='definitely'?'selected':'' %>>Definitely</option>
+                    <option value="most_likely" <%= values.attending_interest==='most_likely'?'selected':'' %>>Most likely yes</option>
+                    <option value="maybe_dates" <%= values.attending_interest==='maybe_dates'?'selected':'' %>>Maybe — depends on dates</option>
+                    <option value="not_now" <%= values.attending_interest==='not_now'?'selected':'' %>>Not at the moment</option>
+                  </select>
+                  <% if (errors.attending_interest) { %><p class="mt-2 text-sm text-red-600"><%= errors.attending_interest %></p><% } %>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-neutral-800">8. Which timing works best on Feb 14?</label>
+                  <select name="feb14_timing" class="mt-2 w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15">
+                    <option value="">Select</option>
+                    <option value="sat_morning" <%= values.feb14_timing==='sat_morning'?'selected':'' %>>Saturday morning</option>
+                    <option value="sat_evening" <%= values.feb14_timing==='sat_evening'?'selected':'' %>>Saturday evening</option>
+                  </select>
+                  <% if (errors.feb14_timing) { %><p class="mt-2 text-sm text-red-600"><%= errors.feb14_timing %></p><% } %>
+                </div>
+              </div>
+
+              <div class="mt-4">
+                <label class="block text-sm font-medium text-neutral-800">9. What interests you the most? (select all that apply)</label>
+
+                <% const selected = new Set(Array.isArray(values.event_interests) ? values.event_interests : (values.event_interests ? [values.event_interests] : [])); %>
+
+                <div class="mt-3 grid gap-3 md:grid-cols-2">
+                  <label class="flex items-start gap-3 rounded-xl border border-neutral-200 bg-white p-4 hover:border-primary/40 min-w-0">
+                    <input type="checkbox" name="event_interests" value="science" class="mt-1 accent-[rgb(193,154,91)] shrink-0" <%= selected.has('science') ? 'checked' : '' %> />
+                    <span class="text-sm text-neutral-800 flex-1 min-w-0 break-words">Learning the deeper science of Rudraksha</span>
+                  </label>
+
+                  <label class="flex items-start gap-3 rounded-xl border border-neutral-200 bg-white p-4 hover:border-primary/40 min-w-0">
+                    <input type="checkbox" name="event_interests" value="rare_powerful" class="mt-1 accent-[rgb(193,154,91)] shrink-0" <%= selected.has('rare_powerful') ? 'checked' : '' %> />
+                    <span class="text-sm text-neutral-800 flex-1 min-w-0 break-words">Exploring rare and powerful Rudrakshas</span>
+                  </label>
+
+                  <label class="flex items-start gap-3 rounded-xl border border-neutral-200 bg-white p-4 hover:border-primary/40 min-w-0">
+                    <input type="checkbox" name="event_interests" value="free_consult" class="mt-1 accent-[rgb(193,154,91)] shrink-0" <%= selected.has('free_consult') ? 'checked' : '' %> />
+                    <span class="text-sm text-neutral-800 flex-1 min-w-0 break-words">Free astrology-based Rudraksha consultation</span>
+                  </label>
+
+                  <label class="flex items-start gap-3 rounded-xl border border-neutral-200 bg-white p-4 hover:border-primary/40 min-w-0">
+                    <input type="checkbox" name="event_interests" value="shaligram" class="mt-1 accent-[rgb(193,154,91)] shrink-0" <%= selected.has('shaligram') ? 'checked' : '' %> />
+                    <span class="text-sm text-neutral-800 flex-1 min-w-0 break-words">Shaligram Darshan</span>
+                  </label>
+
+                  <label class="flex items-start gap-3 rounded-xl border border-neutral-200 bg-white p-4 hover:border-primary/40 min-w-0">
+                    <input type="checkbox" name="event_interests" value="book_talk" class="mt-1 accent-[rgb(193,154,91)] shrink-0" <%= selected.has('book_talk') ? 'checked' : '' %> />
+                    <span class="text-sm text-neutral-800 flex-1 min-w-0 break-words">Book launch and talk by Sukritya</span>
+                  </label>
+
+                  <label class="flex items-start gap-3 rounded-xl border border-neutral-200 bg-white p-4 hover:border-primary/40 min-w-0">
+                    <input type="checkbox" name="event_interests" value="team" class="mt-1 accent-[rgb(193,154,91)] shrink-0" <%= selected.has('team') ? 'checked' : '' %> />
+                    <span class="text-sm text-neutral-800 flex-1 min-w-0 break-words">Meeting the Nepa Rudraksha team</span>
+                  </label>
+
+                  <label class="flex items-start gap-3 rounded-xl border border-neutral-200 bg-white p-4 hover:border-primary/40 min-w-0">
+                    <input type="checkbox" name="event_interests" value="curious" class="mt-1 accent-[rgb(193,154,91)] shrink-0" <%= selected.has('curious') ? 'checked' : '' %> />
+                    <span class="text-sm text-neutral-800 flex-1 min-w-0 break-words">Just curious / would like to explore</span>
+                  </label>
+                </div>
+
+                <% if (errors.event_interests) { %>
+                  <p class="mt-2 text-sm text-red-600"><%= errors.event_interests %></p>
+                <% } %>
+              </div>
+            </section>
+
+            <!-- STEP 4 -->
+            <section class="step-section" data-step="4">
+              <div class="flex items-center justify-between gap-4 min-w-0">
+                <h2 class="text-lg font-semibold text-neutral-900 min-w-0 break-words">Section 4 — Consultation and intent</h2>
+                <span class="step-badge hidden shrink-0 rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-700">Step 4</span>
+              </div>
+
+              <div class="mt-4 grid gap-4 md:grid-cols-2">
+                <div>
+                  <label class="block text-sm font-medium text-neutral-800">10. Would you like to book a free consultation?</label>
+                  <select name="wants_consultation" class="mt-2 w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15">
+                    <option value="">Select</option>
+                    <option value="yes" <%= values.wants_consultation==='yes'?'selected':'' %>>Yes</option>
+                    <option value="maybe" <%= values.wants_consultation==='maybe'?'selected':'' %>>Maybe</option>
+                    <option value="no" <%= values.wants_consultation==='no'?'selected':'' %>>Not necessary</option>
+                  </select>
+                  <% if (errors.wants_consultation) { %><p class="mt-2 text-sm text-red-600"><%= errors.wants_consultation %></p><% } %>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-neutral-800">11. What type of Rudraksha are you most interested in?</label>
+                  <select name="rudraksha_interest_type" class="mt-2 w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15">
+                    <option value="">Select</option>
+                    <option value="healing_spiritual" <%= values.rudraksha_interest_type==='healing_spiritual'?'selected':'' %>>Personal healing or spiritual growth</option>
+                    <option value="planetary" <%= values.rudraksha_interest_type==='planetary'?'selected':'' %>>Planetary / astrology balancing</option>
+                    <option value="siddha" <%= values.rudraksha_interest_type==='siddha'?'selected':'' %>>Siddha malas</option>
+                    <option value="rare" <%= values.rudraksha_interest_type==='rare'?'selected':'' %>>Rare Rudraksha</option>
+                    <option value="family" <%= values.rudraksha_interest_type==='family'?'selected':'' %>>Children / family</option>
+                    <option value="not_sure" <%= values.rudraksha_interest_type==='not_sure'?'selected':'' %>>Not sure — I would like guidance</option>
+                  </select>
+                  <% if (errors.rudraksha_interest_type) { %><p class="mt-2 text-sm text-red-600"><%= errors.rudraksha_interest_type %></p><% } %>
+                </div>
+              </div>
+            </section>
+
+            <!-- STEP 5 -->
+            <section class="step-section" data-step="5">
+              <div class="flex items-center justify-between gap-4 min-w-0">
+                <h2 class="text-lg font-semibold text-neutral-900 min-w-0 break-words">Section 5 — Book launch</h2>
+                <span class="step-badge hidden shrink-0 rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-700">Step 5</span>
+              </div>
+
+              <div class="mt-4">
+                <label class="block text-sm font-medium text-neutral-800">13. Would you like to reserve a signed copy of Sukritya’s upcoming book?</label>
+                <select name="reserve_signed_book" class="mt-2 w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15">
+                  <option value="">Select</option>
+                  <option value="yes" <%= values.reserve_signed_book==='yes'?'selected':'' %>>Yes</option>
+                  <option value="maybe" <%= values.reserve_signed_book==='maybe'?'selected':'' %>>Maybe</option>
+                  <option value="no" <%= values.reserve_signed_book==='no'?'selected':'' %>>Not now</option>
+                </select>
+                <% if (errors.reserve_signed_book) { %><p class="mt-2 text-sm text-red-600"><%= errors.reserve_signed_book %></p><% } %>
+              </div>
+            </section>
+
+            <!-- STEP 6 -->
+            <section class="step-section" data-step="6">
+              <div class="flex items-center justify-between gap-4 min-w-0">
+                <h2 class="text-lg font-semibold text-neutral-900 min-w-0 break-words">Section 6 — Shaligram Darshan</h2>
+                <span class="step-badge hidden shrink-0 rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-700">Step 6</span>
+              </div>
+
+              <div class="mt-4">
+                <label class="block text-sm font-medium text-neutral-800">14. Would you like to participate in Shaligram Darshan during the event?</label>
+                <select name="shaligram_darshan" class="mt-2 w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15">
+                  <option value="">Select</option>
+                  <option value="yes" <%= values.shaligram_darshan==='yes'?'selected':'' %>>Yes</option>
+                  <option value="maybe" <%= values.shaligram_darshan==='maybe'?'selected':'' %>>Maybe</option>
+                  <option value="no" <%= values.shaligram_darshan==='no'?'selected':'' %>>No</option>
+                </select>
+                <% if (errors.shaligram_darshan) { %><p class="mt-2 text-sm text-red-600"><%= errors.shaligram_darshan %></p><% } %>
+              </div>
+            </section>
+
+            <!-- STEP 7 -->
+            <section class="step-section" data-step="7">
+              <div class="flex items-center justify-between gap-4 min-w-0">
+                <h2 class="text-lg font-semibold text-neutral-900 min-w-0 break-words">Section 7 — Personal input</h2>
+                <span class="step-badge hidden shrink-0 rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-700">Step 7</span>
+              </div>
+
+              <div class="mt-4">
+                <label class="block text-sm font-medium text-neutral-800">15. What is the biggest question you have about Rudraksha?</label>
+                <textarea name="biggest_question" rows="4" class="mt-2 w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15" placeholder="Write your question here"><%= values.biggest_question || '' %></textarea>
+                <% if (errors.biggest_question) { %><p class="mt-2 text-sm text-red-600"><%= errors.biggest_question %></p><% } %>
+              </div>
+
+              <div class="mt-4 grid gap-4 md:grid-cols-2">
+                <div>
+                  <label class="block text-sm font-medium text-neutral-800">16. How did you first discover Nepa Rudraksha?</label>
+                  <select name="discovered_from" class="mt-2 w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15">
+                    <option value="">Select</option>
+                    <option value="instagram" <%= values.discovered_from==='instagram'?'selected':'' %>>Instagram</option>
+                    <option value="youtube" <%= values.discovered_from==='youtube'?'selected':'' %>>YouTube</option>
+                    <option value="word_of_mouth" <%= values.discovered_from==='word_of_mouth'?'selected':'' %>>Word of mouth</option>
+                    <option value="event_talk" <%= values.discovered_from==='event_talk'?'selected':'' %>>Event / Talk</option>
+                    <option value="friend_family" <%= values.discovered_from==='friend_family'?'selected':'' %>>Friend / Family</option>
+                    <option value="other" <%= values.discovered_from==='other'?'selected':'' %>>Other</option>
+                  </select>
+                  <% if (errors.discovered_from) { %><p class="mt-2 text-sm text-red-600"><%= errors.discovered_from %></p><% } %>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-neutral-800">If other, please specify (optional)</label>
+                  <input name="discovered_other" value="<%= values.discovered_other || '' %>" class="mt-2 w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15" placeholder="Type source" />
+                </div>
+              </div>
+
+              <div class="mt-4">
+                <label class="flex items-start gap-3 rounded-xl border border-neutral-200 bg-white p-4 min-w-0">
+                  <input type="checkbox" name="wants_updates" class="mt-1 accent-[rgb(193,154,91)] shrink-0" <%= (values.wants_updates === 'on' || values.wants_updates === undefined) ? 'checked' : '' %> />
+                  <span class="text-sm text-neutral-800 flex-1 min-w-0 break-words">17. I would like to receive updates and early invitations to future events</span>
+                </label>
+              </div>
+            </section>
+
+            <!-- STEP 8 -->
+            <section class="step-section" data-step="8">
+              <div class="flex items-center justify-between gap-4 min-w-0">
+                <h2 class="text-lg font-semibold text-neutral-900 min-w-0 break-words">Section 8 — Closing</h2>
+                <span class="step-badge hidden shrink-0 rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-700">Step 8</span>
+              </div>
+
+              <div class="mt-4">
+                <label class="block text-sm font-medium text-neutral-800">18. Anything you’d like us to know or arrange for you during the event? (optional)</label>
+                <textarea name="arrangement_notes" rows="4" class="mt-2 w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15" placeholder="Any preferences or notes"><%= values.arrangement_notes || '' %></textarea>
+              </div>
+            </section>
+
+            <!-- Sticky Action Bar (Mobile-safe) -->
+            <div
+              id="actionBar"
+              class="sticky bottom-0 -mx-5 md:-mx-8 mt-6 border-t border-neutral-200 bg-white/95 backdrop-blur px-5 md:px-8 py-4"
+              style="padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);"
+            >
+              <!-- Wizard Navigation -->
+              <div id="wizardNav" class="hidden">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <button
+                    type="button"
+                    id="btnBack"
+                    class="w-full rounded-xl border border-neutral-300 bg-white px-5 py-3 text-sm font-semibold text-neutral-900 shadow-sm hover:bg-neutral-50 sm:w-auto"
+                  >
+                    Back
+                  </button>
+
+                  <div class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+                    <button
+                      type="button"
+                      id="btnNext"
+                      class="w-full rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-white shadow-sm hover:opacity-95 sm:w-auto"
+                    >
+                      Next
+                    </button>
+
+                    <button
+                      type="submit"
+                      id="btnSubmitWizard"
+                      class="hidden w-full rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-white shadow-sm hover:opacity-95 sm:w-auto"
+                    >
+                      Submit
+                    </button>
+                  </div>
+                </div>
+
+                <p class="mt-3 text-xs text-neutral-500">
+                  Tip: You can switch to “Single page” if you prefer to review everything at once.
+                </p>
+              </div>
+
+              <!-- Single page submit -->
+              <div id="singleSubmit" class="">
+                <button type="submit" class="w-full rounded-xl bg-primary px-5 py-4 text-sm font-semibold text-white shadow-sm hover:opacity-95">
+                  Submit
+                </button>
+                <p class="mt-3 text-center text-xs text-neutral-500">
+                  By submitting, you agree to be contacted by Nepa Rudraksha for event updates.
+                </p>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+    </main>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        let serverErrors = {};
+        try {
+          serverErrors = <%- JSON.stringify(errors || {}) %>;
+        } catch (e) {
+          serverErrors = {};
+        }
+
+        const sections = Array.from(document.querySelectorAll(".step-section"));
+        const totalSteps = sections.length || 8;
+
+        const modeStepBtn = document.getElementById("modeStep");
+        const modeSingleBtn = document.getElementById("modeSingle");
+
+        const wizardNav = document.getElementById("wizardNav");
+        const singleSubmit = document.getElementById("singleSubmit");
+        const wizardProgress = document.getElementById("wizardProgress");
+        const progressBar = document.getElementById("progressBar");
+        const progressText = document.getElementById("progressText");
+        const btnBack = document.getElementById("btnBack");
+        const btnNext = document.getElementById("btnNext");
+        const btnSubmitWizard = document.getElementById("btnSubmitWizard");
+
+        if (!wizardNav || !singleSubmit || sections.length === 0) {
+          if (singleSubmit) singleSubmit.classList.remove("hidden");
+          return;
+        }
+
+        const STORAGE_MODE = "nr_survey_mode";
+        const STORAGE_STEP = "nr_survey_step";
+
+        function hasAnyErrors() {
+          return serverErrors && Object.keys(serverErrors).length > 0;
+        }
+
+        function setActiveButton(mode) {
+          const active = ["border-primary/50", "ring-4", "ring-primary/10", "text-primary"];
+          const inactive = ["border-neutral-300", "text-neutral-900", "ring-0"];
+
+          function apply(btn, isActive) {
+            if (!btn) return;
+            btn.classList.remove(...active, ...inactive);
+            btn.classList.add(...(isActive ? active : inactive));
+            btn.classList.add("rounded-xl","border","bg-white","px-4","py-2","text-sm","font-semibold","shadow-sm");
+          }
+          apply(modeStepBtn, mode === "wizard");
+          apply(modeSingleBtn, mode === "single");
+        }
+
+        function updateProgress(step) {
+          if (!progressBar || !progressText) return;
+          const pct = Math.round((step / totalSteps) * 100);
+          progressBar.style.width = pct + "%";
+          progressText.textContent = "Step " + step + " of " + totalSteps;
+        }
+
+        function showWizard(step) {
+          sections.forEach((s) => (s.style.display = "none"));
+          const active = sections.find((s) => Number(s.dataset.step) === step);
+          if (active) active.style.display = "block";
+
+          document.querySelectorAll(".step-badge").forEach((b) => b.classList.remove("hidden"));
+
+          wizardNav.classList.remove("hidden");
+          if (wizardProgress) wizardProgress.classList.remove("hidden");
+          singleSubmit.classList.add("hidden");
+
+          if (btnBack) {
+            btnBack.disabled = step === 1;
+            btnBack.classList.toggle("opacity-50", step === 1);
+            btnBack.classList.toggle("cursor-not-allowed", step === 1);
+          }
+
+          const isLast = step === totalSteps;
+          if (btnNext) btnNext.classList.toggle("hidden", isLast);
+          if (btnSubmitWizard) btnSubmitWizard.classList.toggle("hidden", !isLast);
+
+          updateProgress(step);
+
+          try {
+            localStorage.setItem(STORAGE_STEP, String(step));
+            localStorage.setItem(STORAGE_MODE, "wizard");
+          } catch (e) {}
+
+          setActiveButton("wizard");
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+
+        function showSingle() {
+          sections.forEach((s) => (s.style.display = "block"));
+          document.querySelectorAll(".step-badge").forEach((b) => b.classList.add("hidden"));
+
+          wizardNav.classList.add("hidden");
+          if (wizardProgress) wizardProgress.classList.add("hidden");
+          singleSubmit.classList.remove("hidden");
+
+          try {
+            localStorage.setItem(STORAGE_MODE, "single");
+          } catch (e) {}
+
+          setActiveButton("single");
+        }
+
+        try {
+          if (hasAnyErrors()) {
+            showSingle();
+          } else {
+            let savedMode = null;
+            let savedStep = 1;
+
+            try {
+              savedMode = localStorage.getItem(STORAGE_MODE);
+              savedStep = Number(localStorage.getItem(STORAGE_STEP) || "1");
+            } catch (e) {}
+
+            if (savedMode === "single") {
+              showSingle();
+            } else {
+              const step = Math.min(Math.max(savedStep, 1), totalSteps);
+              showWizard(step);
+            }
+          }
+        } catch (e) {
+          wizardNav.classList.remove("hidden");
+          singleSubmit.classList.remove("hidden");
+        }
+
+        if (modeStepBtn) {
+          modeStepBtn.addEventListener("click", () => {
+            const current = (() => {
+              try { return Number(localStorage.getItem(STORAGE_STEP) || "1"); } catch(e) { return 1; }
+            })();
+            showWizard(Math.min(Math.max(current, 1), totalSteps));
+          });
+        }
+
+        if (modeSingleBtn) {
+          modeSingleBtn.addEventListener("click", () => showSingle());
+        }
+
+        if (btnBack) {
+          btnBack.addEventListener("click", () => {
+            const current = (() => {
+              try { return Number(localStorage.getItem(STORAGE_STEP) || "1"); } catch(e) { return 1; }
+            })();
+            if (current > 1) showWizard(current - 1);
+          });
+        }
+
+        if (btnNext) {
+          btnNext.addEventListener("click", () => {
+            const current = (() => {
+              try { return Number(localStorage.getItem(STORAGE_STEP) || "1"); } catch(e) { return 1; }
+            })();
+            if (current < totalSteps) showWizard(current + 1);
+          });
+        }
+      });
+    </script>
+  </body>
+</html>
