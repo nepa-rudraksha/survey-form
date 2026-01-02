@@ -197,6 +197,7 @@
                     class="mt-2 w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15">
                     <option value="">Select</option>
                     <option value="sat_morning" <%= values.feb14_timing==='sat_morning'?'selected':'' %>>Morning</option>
+                    <option value="sat_afternoon" <%= values.feb14_timing==='sat_afternoon'?'selected':'' %>>Afternoon</option>
                     <option value="sat_evening" <%= values.feb14_timing==='sat_evening'?'selected':'' %>>Evening</option>
                   </select>
                   <% if (errors.feb14_timing) { %><p class="mt-2 text-sm text-red-600"><%= errors.feb14_timing %></p><% } %>

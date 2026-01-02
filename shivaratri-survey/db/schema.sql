@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS survey_responses (
   currently_wear VARCHAR(255) NULL,
 
   attending_interest ENUM('definitely','most_likely','maybe_dates','not_now') NOT NULL,
-  feb14_timing ENUM('sat_morning','sat_evening') NOT NULL,
+  feb14_timing ENUM('sat_morning','sat_afternoon','sat_evening') NOT NULL,
 
   event_interests JSON NOT NULL,
 
