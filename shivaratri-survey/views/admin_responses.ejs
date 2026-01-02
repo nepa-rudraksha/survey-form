@@ -1,0 +1,153 @@
+<!-- views/admin_responses.ejs -->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Survey Responses</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-neutral-50 text-neutral-900">
+  <header class="border-b border-neutral-200 bg-white">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
+      <div>
+        <div class="text-sm font-semibold tracking-wide text-neutral-600">Nepa Rudraksha</div>
+        <h1 class="text-xl font-semibold">Survey Responses</h1>
+        <p class="text-sm text-neutral-600">Filter, review, and export submissions.</p>
+      </div>
+
+      <form method="POST" action="/admin/logout">
+        <button class="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50">
+          Logout
+        </button>
+      </form>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-6xl px-4 py-6">
+    <div class="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+      <form method="GET" action="/admin/responses" class="grid gap-3 md:grid-cols-5">
+        <div>
+          <label class="block text-xs font-semibold text-neutral-700">Attending interest</label>
+          <select name="attending_interest" class="mt-1 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm">
+            <option value="">All</option>
+            <option value="definitely" <%= filters.attending_interest==="definitely" ? "selected":"" %>>Definitely</option>
+            <option value="most_likely" <%= filters.attending_interest==="most_likely" ? "selected":"" %>>Most likely</option>
+            <option value="maybe_dates" <%= filters.attending_interest==="maybe_dates" ? "selected":"" %>>Maybe (dates)</option>
+            <option value="not_now" <%= filters.attending_interest==="not_now" ? "selected":"" %>>Not now</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-neutral-700">Feb 14 timing</label>
+          <select name="feb14_timing" class="mt-1 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm">
+            <option value="">All</option>
+            <option value="sat_morning" <%= filters.feb14_timing==="sat_morning" ? "selected":"" %>>Saturday morning</option>
+            <option value="sat_evening" <%= filters.feb14_timing==="sat_evening" ? "selected":"" %>>Saturday evening</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-neutral-700">Wants consultation</label>
+          <select name="wants_consultation" class="mt-1 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm">
+            <option value="">All</option>
+            <option value="yes" <%= filters.wants_consultation==="yes" ? "selected":"" %>>Yes</option>
+            <option value="maybe" <%= filters.wants_consultation==="maybe" ? "selected":"" %>>Maybe</option>
+            <option value="no" <%= filters.wants_consultation==="no" ? "selected":"" %>>No</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-neutral-700">Discovered from</label>
+          <select name="discovered_from" class="mt-1 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm">
+            <option value="">All</option>
+            <option value="instagram" <%= filters.discovered_from==="instagram" ? "selected":"" %>>Instagram</option>
+            <option value="youtube" <%= filters.discovered_from==="youtube" ? "selected":"" %>>YouTube</option>
+            <option value="word_of_mouth" <%= filters.discovered_from==="word_of_mouth" ? "selected":"" %>>Word of mouth</option>
+            <option value="event_talk" <%= filters.discovered_from==="event_talk" ? "selected":"" %>>Event / talk</option>
+            <option value="friend_family" <%= filters.discovered_from==="friend_family" ? "selected":"" %>>Friend / family</option>
+            <option value="other" <%= filters.discovered_from==="other" ? "selected":"" %>>Other</option>
+          </select>
+        </div>
+
+        <div class="flex items-end gap-2">
+          <button class="w-full rounded-xl bg-[#C19A5B] px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
+            Apply
+          </button>
+          <a href="/admin/responses" class="w-full rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold text-center hover:bg-neutral-50">
+            Reset
+          </a>
+        </div>
+      </form>
+
+      <div class="mt-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div class="text-sm text-neutral-700">
+          Total: <span class="font-semibold"><%= total %></span>
+        </div>
+
+        <a href="/admin/responses.csv?<%= qs %>"
+           class="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50">
+          Export CSV
+        </a>
+      </div>
+    </div>
+
+    <div class="mt-6 overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-neutral-50">
+            <tr class="text-left text-xs font-semibold uppercase tracking-wide text-neutral-600">
+              <th class="px-4 py-3">Created</th>
+              <th class="px-4 py-3">Name</th>
+              <th class="px-4 py-3">Mobile</th>
+              <th class="px-4 py-3">Interest</th>
+              <th class="px-4 py-3">Timing</th>
+              <th class="px-4 py-3">Consultation</th>
+              <th class="px-4 py-3">Discovered</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-neutral-200">
+            <% rows.forEach(r => { %>
+              <tr>
+                <td class="px-4 py-3 whitespace-nowrap text-neutral-600"><%= r.created_at %></td>
+                <td class="px-4 py-3 font-semibold"><%= r.full_name %></td>
+                <td class="px-4 py-3"><%= r.mobile_number %></td>
+                <td class="px-4 py-3"><%= r.attending_interest %></td>
+                <td class="px-4 py-3"><%= r.feb14_timing %></td>
+                <td class="px-4 py-3"><%= r.wants_consultation %></td>
+                <td class="px-4 py-3"><%= r.discovered_from %></td>
+              </tr>
+            <% }) %>
+
+            <% if (!rows.length) { %>
+              <tr>
+                <td colspan="7" class="px-4 py-10 text-center text-neutral-600">No results found.</td>
+              </tr>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="flex items-center justify-between border-t border-neutral-200 px-4 py-3">
+        <div class="text-sm text-neutral-600">
+          Page <span class="font-semibold"><%= page %></span> of <span class="font-semibold"><%= pages %></span>
+        </div>
+        <div class="flex gap-2">
+          <% if (page > 1) { %>
+            <a href="/admin/responses?<%= qsPrev %>"
+               class="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50">
+              Prev
+            </a>
+          <% } %>
+          <% if (page < pages) { %>
+            <a href="/admin/responses?<%= qsNext %>"
+               class="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50">
+              Next
+            </a>
+          <% } %>
+        </div>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

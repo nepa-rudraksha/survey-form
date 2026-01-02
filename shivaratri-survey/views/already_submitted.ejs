@@ -1,0 +1,67 @@
+<!-- views/already_submitted.ejs -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Already submitted</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="min-h-screen bg-neutral-50 text-neutral-900">
+    <main class="mx-auto max-w-2xl px-4 py-10">
+      <div class="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
+        <h1 class="text-xl font-semibold">We already received your response</h1>
+
+        <p class="mt-2 text-sm text-neutral-700">
+          A response already exists for this mobile number:
+          <span class="font-semibold"><%= mobile_number %></span>
+        </p>
+
+        <div class="mt-6 rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+          <p class="text-sm font-semibold text-neutral-900">Edit your response</p>
+          <p class="mt-1 text-sm text-neutral-700">
+            If you submitted from the same device/browser, you can open your edit link.
+          </p>
+
+          <button
+            id="btnEditLocal"
+            class="mt-4 w-full rounded-xl bg-black px-5 py-3 text-sm font-semibold text-white shadow-sm hover:opacity-95"
+            type="button"
+          >
+            Edit my response
+          </button>
+
+          <p class="mt-3 text-xs text-neutral-600">
+            If you do not have the edit link saved on this device, please use the edit link you received after submitting.
+          </p>
+        </div>
+
+        <a
+          href="/"
+          class="mt-6 inline-flex rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold text-neutral-900 shadow-sm hover:bg-neutral-50"
+        >
+          Back to form
+        </a>
+      </div>
+    </main>
+
+    <script>
+      (function () {
+        const mobile = "<%= mobile_number %>";
+        const btn = document.getElementById("btnEditLocal");
+
+        btn.addEventListener("click", () => {
+          try {
+            const url = localStorage.getItem("nr_edit_" + mobile);
+            if (url) {
+              window.location.href = url;
+              return;
+            }
+          } catch {}
+
+          alert("Edit link was not found on this device. Please use the edit link you received after submitting.");
+        });
+      })();
+    </script>
+  </body>
+</html>
