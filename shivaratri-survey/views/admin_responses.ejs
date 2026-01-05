@@ -1,4 +1,3 @@
-<!-- views/admin_responses.ejs -->
 <!doctype html>
 <html lang="en">
 <head>
@@ -6,146 +5,288 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Survey Responses</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: { colors: { primary: "#C19A5B" } } } };
+  </script>
 </head>
 <body class="min-h-screen bg-neutral-50 text-neutral-900">
   <header class="border-b border-neutral-200 bg-white">
-    <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
-      <div>
-        <div class="text-sm font-semibold tracking-wide text-neutral-600">Nepa Rudraksha</div>
-        <h1 class="text-xl font-semibold">Survey Responses</h1>
-        <p class="text-sm text-neutral-600">Filter, review, and export submissions.</p>
+    <div class="mx-auto max-w-7xl px-4 py-6">
+      <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <div class="text-sm font-semibold tracking-wide text-neutral-600">Nepa Rudraksha</div>
+          <h1 class="mt-1 text-2xl font-semibold">Survey Responses</h1>
+          <p class="mt-1 text-sm text-neutral-600">
+            Total: <span class="font-semibold text-neutral-900"><%= total %></span>
+          </p>
+        </div>
+
+        <a
+  href="/admin/report"
+  class="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
+>
+  View Report
+</a>
+
+
+        <div class="flex items-center gap-2">
+          <a
+            href="/admin/responses.csv?<%= qs %>"
+            class="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
+          >
+            Export CSV
+          </a>
+
+          <form method="POST" action="/admin/logout">
+            <button
+              type="submit"
+              class="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white hover:opacity-95"
+            >
+              Logout
+            </button>
+          </form>
+        </div>
       </div>
 
-      <form method="POST" action="/admin/logout">
-        <button class="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50">
-          Logout
-        </button>
+      <!-- Filters -->
+      <form method="GET" action="/admin/responses" class="mt-5 grid gap-3 md:grid-cols-12">
+        <div class="md:col-span-4">
+          <label class="block text-xs font-semibold text-neutral-700">Search (Name / Mobile / Email)</label>
+          <input
+            name="search"
+            value="<%= (q.search || '') %>"
+            class="mt-1 w-full rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/30"
+            placeholder="Search..."
+          />
+        </div>
+
+        <div class="md:col-span-2">
+          <label class="block text-xs font-semibold text-neutral-700">Attendance</label>
+          <select name="attending_interest" class="mt-1 w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm">
+            <option value="">All</option>
+            <option value="definitely" <%= q.attending_interest === 'definitely' ? 'selected' : '' %>>Definitely</option>
+            <option value="most_likely" <%= q.attending_interest === 'most_likely' ? 'selected' : '' %>>Most likely</option>
+            <option value="maybe_dates" <%= q.attending_interest === 'maybe_dates' ? 'selected' : '' %>>Maybe (dates)</option>
+            <option value="not_now" <%= q.attending_interest === 'not_now' ? 'selected' : '' %>>Not now</option>
+          </select>
+        </div>
+
+        <div class="md:col-span-2">
+          <label class="block text-xs font-semibold text-neutral-700">Timing</label>
+          <select name="feb14_timing" class="mt-1 w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm">
+            <option value="">All</option>
+            <option value="sat_morning" <%= q.feb14_timing === 'sat_morning' ? 'selected' : '' %>>Sat morning</option>
+            <option value="sat_afternoon" <%= q.feb14_timing === 'sat_afternoon' ? 'selected' : '' %>>Sat afternoon</option>
+            <option value="sat_evening" <%= q.feb14_timing === 'sat_evening' ? 'selected' : '' %>>Sat evening</option>
+          </select>
+        </div>
+
+        <div class="md:col-span-2">
+          <label class="block text-xs font-semibold text-neutral-700">Consultation</label>
+          <select name="wants_consultation" class="mt-1 w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm">
+            <option value="">All</option>
+            <option value="yes" <%= q.wants_consultation === 'yes' ? 'selected' : '' %>>Yes</option>
+            <option value="maybe" <%= q.wants_consultation === 'maybe' ? 'selected' : '' %>>Maybe</option>
+            <option value="no" <%= q.wants_consultation === 'no' ? 'selected' : '' %>>No</option>
+          </select>
+        </div>
+
+        <div class="md:col-span-2">
+          <label class="block text-xs font-semibold text-neutral-700">Discovered</label>
+          <select name="discovered_from" class="mt-1 w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm">
+            <option value="">All</option>
+            <option value="instagram" <%= q.discovered_from === 'instagram' ? 'selected' : '' %>>Instagram</option>
+            <option value="youtube" <%= q.discovered_from === 'youtube' ? 'selected' : '' %>>YouTube</option>
+            <option value="word_of_mouth" <%= q.discovered_from === 'word_of_mouth' ? 'selected' : '' %>>Word of mouth</option>
+            <option value="event_talk" <%= q.discovered_from === 'event_talk' ? 'selected' : '' %>>Event / Talk</option>
+            <option value="friend_family" <%= q.discovered_from === 'friend_family' ? 'selected' : '' %>>Friend / Family</option>
+            <option value="other" <%= q.discovered_from === 'other' ? 'selected' : '' %>>Other</option>
+          </select>
+        </div>
+
+        <div class="md:col-span-12 flex flex-wrap items-center gap-2">
+          <label class="text-xs font-semibold text-neutral-700">Per page</label>
+          <select name="per" class="rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm">
+            <% [25,50,100,200].forEach(function(n){ %>
+              <option value="<%= n %>" <%= (String(perPage) === String(n)) ? 'selected' : '' %>><%= n %></option>
+            <% }) %>
+          </select>
+
+          <button type="submit" class="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
+            Apply filters
+          </button>
+
+          <a href="/admin/responses" class="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50">
+            Clear
+          </a>
+        </div>
       </form>
     </div>
   </header>
 
-  <main class="mx-auto max-w-6xl px-4 py-6">
-    <div class="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
-      <form method="GET" action="/admin/responses" class="grid gap-3 md:grid-cols-5">
-        <div>
-          <label class="block text-xs font-semibold text-neutral-700">Attending interest</label>
-          <select name="attending_interest" class="mt-1 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm">
-            <option value="">All</option>
-            <option value="definitely" <%= filters.attending_interest==="definitely" ? "selected":"" %>>Definitely</option>
-            <option value="most_likely" <%= filters.attending_interest==="most_likely" ? "selected":"" %>>Most likely</option>
-            <option value="maybe_dates" <%= filters.attending_interest==="maybe_dates" ? "selected":"" %>>Maybe (dates)</option>
-            <option value="not_now" <%= filters.attending_interest==="not_now" ? "selected":"" %>>Not now</option>
-          </select>
-        </div>
-
-        <div>
-          <label class="block text-xs font-semibold text-neutral-700">Feb 14 timing</label>
-          <select name="feb14_timing" class="mt-1 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm">
-            <option value="">All</option>
-            <option value="sat_morning" <%= filters.feb14_timing==="sat_morning" ? "selected":"" %>>Saturday morning</option>
-            <option value="sat_afternoon" <%= filters.feb14_timing==="sat_afternoon" ? "selected":"" %>>Saturday afternoon</option>
-            <option value="sat_evening" <%= filters.feb14_timing==="sat_evening" ? "selected":"" %>>Saturday evening</option>
-          </select>
-        </div>
-
-        <div>
-          <label class="block text-xs font-semibold text-neutral-700">Wants consultation</label>
-          <select name="wants_consultation" class="mt-1 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm">
-            <option value="">All</option>
-            <option value="yes" <%= filters.wants_consultation==="yes" ? "selected":"" %>>Yes</option>
-            <option value="maybe" <%= filters.wants_consultation==="maybe" ? "selected":"" %>>Maybe</option>
-            <option value="no" <%= filters.wants_consultation==="no" ? "selected":"" %>>No</option>
-          </select>
-        </div>
-
-        <div>
-          <label class="block text-xs font-semibold text-neutral-700">Discovered from</label>
-          <select name="discovered_from" class="mt-1 w-full rounded-xl border border-neutral-300 px-3 py-2 text-sm">
-            <option value="">All</option>
-            <option value="instagram" <%= filters.discovered_from==="instagram" ? "selected":"" %>>Instagram</option>
-            <option value="youtube" <%= filters.discovered_from==="youtube" ? "selected":"" %>>YouTube</option>
-            <option value="word_of_mouth" <%= filters.discovered_from==="word_of_mouth" ? "selected":"" %>>Word of mouth</option>
-            <option value="event_talk" <%= filters.discovered_from==="event_talk" ? "selected":"" %>>Event / talk</option>
-            <option value="friend_family" <%= filters.discovered_from==="friend_family" ? "selected":"" %>>Friend / family</option>
-            <option value="other" <%= filters.discovered_from==="other" ? "selected":"" %>>Other</option>
-          </select>
-        </div>
-
-        <div class="flex items-end gap-2">
-          <button class="w-full rounded-xl bg-[#C19A5B] px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
-            Apply
-          </button>
-          <a href="/admin/responses" class="w-full rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold text-center hover:bg-neutral-50">
-            Reset
-          </a>
-        </div>
-      </form>
-
-      <div class="mt-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <div class="text-sm text-neutral-700">
-          Total: <span class="font-semibold"><%= total %></span>
-        </div>
-
-        <a href="/admin/responses.csv?<%= qs %>"
-           class="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50">
-          Export CSV
-        </a>
-      </div>
-    </div>
-
-    <div class="mt-6 overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
+  <main class="mx-auto max-w-7xl px-4 py-8">
+    <div class="rounded-2xl border border-neutral-200 bg-white shadow-sm">
       <div class="overflow-x-auto">
-        <table class="min-w-full text-sm">
-          <thead class="bg-neutral-50">
-            <tr class="text-left text-xs font-semibold uppercase tracking-wide text-neutral-600">
-              <th class="px-4 py-3">Created</th>
-              <th class="px-4 py-3">Name</th>
-              <th class="px-4 py-3">Mobile</th>
-              <th class="px-4 py-3">Interest</th>
-              <th class="px-4 py-3">Timing</th>
-              <th class="px-4 py-3">Consultation</th>
-              <th class="px-4 py-3">Discovered</th>
+        <table class="min-w-[1600px] w-full text-left text-sm">
+          <thead class="sticky top-0 bg-white">
+            <tr class="border-b border-neutral-200">
+              <th class="px-4 py-3 font-semibold">ID</th>
+              <th class="px-4 py-3 font-semibold">Submitted</th>
+              <th class="px-4 py-3 font-semibold">Name</th>
+              <th class="px-4 py-3 font-semibold">Mobile</th>
+              <th class="px-4 py-3 font-semibold">Email</th>
+
+              <th class="px-4 py-3 font-semibold">Bangalore</th>
+              <th class="px-4 py-3 font-semibold">Purchase</th>
+              <th class="px-4 py-3 font-semibold">Currently wear</th>
+
+              <th class="px-4 py-3 font-semibold">Attendance</th>
+              <th class="px-4 py-3 font-semibold">Timing</th>
+              <th class="px-4 py-3 font-semibold">Event interests</th>
+
+              <th class="px-4 py-3 font-semibold">Consultation?</th>
+              <th class="px-4 py-3 font-semibold">Interest type</th>
+              <th class="px-4 py-3 font-semibold">Signed book</th>
+              <th class="px-4 py-3 font-semibold">Shaligram darshan</th>
+
+              <th class="px-4 py-3 font-semibold">Biggest question</th>
+              <th class="px-4 py-3 font-semibold">Discovered from</th>
+              <th class="px-4 py-3 font-semibold">Updates?</th>
+              <th class="px-4 py-3 font-semibold">Notes</th>
+
+              <th class="px-4 py-3 font-semibold">UTM</th>
+              <th class="px-4 py-3 font-semibold">Referrer</th>
+              <th class="px-4 py-3 font-semibold">IP</th>
+              <th class="px-4 py-3 font-semibold">User agent</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-neutral-200">
-            <% rows.forEach(r => { %>
-              <tr>
-                <td class="px-4 py-3 whitespace-nowrap text-neutral-600"><%= r.created_at %></td>
-                <td class="px-4 py-3 font-semibold"><%= r.full_name %></td>
-                <td class="px-4 py-3"><%= r.mobile_number %></td>
-                <td class="px-4 py-3"><%= r.attending_interest %></td>
-                <td class="px-4 py-3"><%= r.feb14_timing %></td>
-                <td class="px-4 py-3"><%= r.wants_consultation %></td>
-                <td class="px-4 py-3"><%= r.discovered_from %></td>
-              </tr>
-            <% }) %>
 
-            <% if (!rows.length) { %>
+          <tbody>
+            <% if (!rows || !rows.length) { %>
               <tr>
-                <td colspan="7" class="px-4 py-10 text-center text-neutral-600">No results found.</td>
+                <td colspan="23" class="px-4 py-6 text-center text-neutral-600">No responses found.</td>
               </tr>
             <% } %>
+
+            <% rows.forEach(function(r){ %>
+              <tr class="border-b border-neutral-100 hover:bg-neutral-50">
+                <td class="px-4 py-3 whitespace-nowrap"><%= r.id %></td>
+                <td class="px-4 py-3 whitespace-nowrap"><%= r.created_at %></td>
+
+                <td class="px-4 py-3 whitespace-nowrap font-semibold"><%= r.full_name %></td>
+                <td class="px-4 py-3 whitespace-nowrap"><%= r.mobile_number %></td>
+                <td class="px-4 py-3 whitespace-nowrap"><%= r.email || "-" %></td>
+
+                <td class="px-4 py-3 whitespace-nowrap"><%= r.based_in_bangalore_label %></td>
+                <td class="px-4 py-3 whitespace-nowrap"><%= r.has_purchased_label %></td>
+                <td class="px-4 py-3">
+                  <% if (r.currently_wear) { %>
+                    <div class="max-w-[260px]">
+                      <details>
+                        <summary class="cursor-pointer text-neutral-900">View</summary>
+                        <div class="mt-2 text-neutral-700 whitespace-pre-wrap"><%= r.currently_wear %></div>
+                      </details>
+                    </div>
+                  <% } else { %>
+                    <span class="text-neutral-500">-</span>
+                  <% } %>
+                </td>
+
+                <td class="px-4 py-3 whitespace-nowrap"><%= r.attending_interest_label %></td>
+                <td class="px-4 py-3 whitespace-nowrap"><%= r.feb14_timing_label %></td>
+
+                <td class="px-4 py-3">
+                  <% if (r.event_interests_text) { %>
+                    <div class="max-w-[260px]">
+                      <details>
+                        <summary class="cursor-pointer text-neutral-900">View</summary>
+                        <div class="mt-2 text-neutral-700 whitespace-pre-wrap"><%= r.event_interests_text %></div>
+                      </details>
+                    </div>
+                  <% } else { %>
+                    <span class="text-neutral-500">-</span>
+                  <% } %>
+                </td>
+
+                <td class="px-4 py-3 whitespace-nowrap"><%= r.wants_consultation_label %></td>
+                <td class="px-4 py-3 whitespace-nowrap"><%= r.rudraksha_interest_type_label %></td>
+                <td class="px-4 py-3 whitespace-nowrap"><%= r.reserve_signed_book_label %></td>
+                <td class="px-4 py-3 whitespace-nowrap"><%= r.shaligram_darshan_label %></td>
+
+                <td class="px-4 py-3">
+                  <div class="max-w-[320px]">
+                    <details>
+                      <summary class="cursor-pointer text-neutral-900">View</summary>
+                      <div class="mt-2 text-neutral-700 whitespace-pre-wrap"><%= r.biggest_question %></div>
+                    </details>
+                  </div>
+                </td>
+
+                <td class="px-4 py-3 whitespace-nowrap"><%= r.discovered_display %></td>
+                <td class="px-4 py-3 whitespace-nowrap"><%= r.wants_updates_label %></td>
+
+                <td class="px-4 py-3">
+                  <% if (r.arrangement_notes) { %>
+                    <div class="max-w-[260px]">
+                      <details>
+                        <summary class="cursor-pointer text-neutral-900">View</summary>
+                        <div class="mt-2 text-neutral-700 whitespace-pre-wrap"><%= r.arrangement_notes %></div>
+                      </details>
+                    </div>
+                  <% } else { %>
+                    <span class="text-neutral-500">-</span>
+                  <% } %>
+                </td>
+
+                <td class="px-4 py-3">
+                  <div class="text-xs text-neutral-700 space-y-1">
+                    <div><span class="font-semibold">source:</span> <%= r.utm_source || "-" %></div>
+                    <div><span class="font-semibold">medium:</span> <%= r.utm_medium || "-" %></div>
+                    <div><span class="font-semibold">campaign:</span> <%= r.utm_campaign || "-" %></div>
+                  </div>
+                </td>
+
+                <td class="px-4 py-3">
+                  <div class="max-w-[240px] break-words text-xs text-neutral-700"><%= r.referrer || "-" %></div>
+                </td>
+
+                <td class="px-4 py-3 whitespace-nowrap text-xs text-neutral-700"><%= r.ip_address || "-" %></td>
+                <td class="px-4 py-3">
+                  <div class="max-w-[260px] break-words text-xs text-neutral-700"><%= r.user_agent || "-" %></div>
+                </td>
+              </tr>
+            <% }) %>
           </tbody>
         </table>
       </div>
 
-      <div class="flex items-center justify-between border-t border-neutral-200 px-4 py-3">
+      <!-- Pagination -->
+      <div class="flex items-center justify-between px-4 py-4">
         <div class="text-sm text-neutral-600">
-          Page <span class="font-semibold"><%= page %></span> of <span class="font-semibold"><%= pages %></span>
+          Page <span class="font-semibold text-neutral-900"><%= page %></span>
+          • Showing <span class="font-semibold text-neutral-900"><%= perPage %></span> per page
         </div>
-        <div class="flex gap-2">
-          <% if (page > 1) { %>
-            <a href="/admin/responses?<%= qsPrev %>"
-               class="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50">
-              Prev
-            </a>
-          <% } %>
-          <% if (page < pages) { %>
-            <a href="/admin/responses?<%= qsNext %>"
-               class="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50">
-              Next
-            </a>
-          <% } %>
+
+        <div class="flex items-center gap-2">
+          <% const totalPages = Math.max(1, Math.ceil(total / perPage)); %>
+
+          <a
+            class="rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm font-semibold hover:bg-neutral-50 <%= page <= 1 ? 'pointer-events-none opacity-50' : '' %>"
+            href="/admin/responses?<%= qs %>&page=<%= Math.max(1, page - 1) %>"
+          >
+            Prev
+          </a>
+
+          <div class="text-sm text-neutral-600">
+            <span class="font-semibold text-neutral-900"><%= page %></span> / <%= totalPages %>
+          </div>
+
+          <a
+            class="rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm font-semibold hover:bg-neutral-50 <%= page >= totalPages ? 'pointer-events-none opacity-50' : '' %>"
+            href="/admin/responses?<%= qs %>&page=<%= Math.min(totalPages, page + 1) %>"
+          >
+            Next
+          </a>
         </div>
       </div>
     </div>
