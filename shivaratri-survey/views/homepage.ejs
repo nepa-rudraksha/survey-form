@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nepa Rudraksha — Survey Forms</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: { extend: { colors: { primary: "#C19A5B" } } },
+      };
+    </script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+      body { font-family: 'Inter', sans-serif; }
+      .gradient-bg {
+        background: linear-gradient(135deg, rgba(193, 154, 91, 0.1) 0%, rgba(193, 154, 91, 0.05) 100%);
+      }
+      .hero-gradient {
+        background: 
+          radial-gradient(1200px circle at 20% 30%, rgba(193, 154, 91, 0.15), transparent 50%),
+          radial-gradient(1000px circle at 80% 70%, rgba(193, 154, 91, 0.1), transparent 50%),
+          linear-gradient(180deg, #ffffff 0%, #fafafa 100%);
+      }
+      .card-hover {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      .card-hover:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+      }
+    </style>
+  </head>
+
+  <body class="min-h-screen bg-white text-neutral-900 antialiased">
+    <!-- Hero Section -->
+    <header class="hero-gradient border-b border-primary/10">
+      <div class="mx-auto max-w-7xl px-4 py-12 md:px-6 md:py-20">
+        <div class="text-center">
+          <div class="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-4 py-2 mb-6">
+            <svg class="h-4 w-4 text-primary" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+            </svg>
+            <span class="text-xs font-semibold text-primary uppercase tracking-wider">Nepa Rudraksha</span>
+          </div>
+          <h1 class="text-4xl md:text-6xl font-bold tracking-tight text-neutral-900 mb-4">
+            Welcome to Our
+            <span class="text-primary">Survey Platform</span>
+          </h1>
+          <p class="mx-auto max-w-2xl text-lg md:text-xl text-neutral-600 leading-relaxed">
+            Share your thoughts, help us improve, and be part of our community. 
+            Select a form below to get started.
+          </p>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="mx-auto w-full max-w-7xl">
+      <!-- Forms Section -->
+      <section class="px-4 py-12 md:px-6 md:py-16">
+        <% if (!forms || forms.length === 0) { %>
+          <div class="rounded-2xl border-2 border-dashed border-neutral-200 bg-gradient-to-br from-neutral-50 to-white p-12 text-center">
+            <svg class="mx-auto h-16 w-16 text-neutral-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <h3 class="text-xl font-semibold text-neutral-900 mb-2">No Forms Available</h3>
+            <p class="text-neutral-600">Check back soon for new survey forms.</p>
+          </div>
+        <% } else { %>
+          <div class="mb-12 text-center">
+            <h2 class="text-3xl md:text-4xl font-bold text-neutral-900 mb-3">
+              Available Forms
+            </h2>
+            <p class="text-lg text-neutral-600 max-w-2xl mx-auto">
+              Choose from the forms below to share your feedback and insights with us.
+            </p>
+          </div>
+
+          <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <% forms.forEach(function(form, index) { %>
+              <a
+                href="/forms/<%= form.slug %>"
+                class="group card-hover block rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm hover:border-primary/50 hover:shadow-lg"
+              >
+                <div class="flex items-start justify-between mb-4">
+                  <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <span class="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+                    Form <%= index + 1 %>
+                  </span>
+                </div>
+                
+                <h3 class="text-xl font-bold text-neutral-900 mb-2 group-hover:text-primary transition-colors">
+                  <%= form.title %>
+                </h3>
+                
+                <% if (form.description) { %>
+                  <p class="text-sm text-neutral-600 line-clamp-3 leading-relaxed mb-4">
+                    <%= form.description %>
+                  </p>
+                <% } else { %>
+                  <p class="text-sm text-neutral-500 italic mb-4">
+                    Click to fill out this form
+                  </p>
+                <% } %>
+
+                <div class="flex items-center text-sm font-semibold text-primary group-hover:gap-2 transition-all">
+                  <span>Get Started</span>
+                  <svg class="ml-2 h-4 w-4 transform transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                  </svg>
+                </div>
+              </a>
+            <% }); %>
+          </div>
+        <% } %>
+      </section>
+
+      <!-- Info Section -->
+      <section class="gradient-bg border-y border-primary/10 px-4 py-16 md:px-6 md:py-20">
+        <div class="mx-auto max-w-6xl">
+          <div class="mb-12 text-center">
+            <h2 class="text-3xl md:text-4xl font-bold text-neutral-900 mb-3">
+              Why Your Feedback Matters
+            </h2>
+            <p class="text-lg text-neutral-600 max-w-2xl mx-auto">
+              Your insights help us create better experiences and serve our community more effectively.
+            </p>
+          </div>
+
+          <div class="grid gap-8 md:grid-cols-3">
+            <div class="rounded-2xl bg-white p-6 shadow-sm border border-neutral-100">
+              <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary mb-4">
+                <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h3 class="text-lg font-bold text-neutral-900 mb-2">Quick & Easy</h3>
+              <p class="text-sm text-neutral-600 leading-relaxed">
+                Our forms are designed to be simple and straightforward. Complete them in just a few minutes.
+              </p>
+            </div>
+
+            <div class="rounded-2xl bg-white p-6 shadow-sm border border-neutral-100">
+              <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary mb-4">
+                <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              </div>
+              <h3 class="text-lg font-bold text-neutral-900 mb-2">Secure & Private</h3>
+              <p class="text-sm text-neutral-600 leading-relaxed">
+                Your responses are kept confidential and secure. We respect your privacy and data protection.
+              </p>
+            </div>
+
+            <div class="rounded-2xl bg-white p-6 shadow-sm border border-neutral-100">
+              <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary mb-4">
+                <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+              <h3 class="text-lg font-bold text-neutral-900 mb-2">Make an Impact</h3>
+              <p class="text-sm text-neutral-600 leading-relaxed">
+                Your feedback directly influences our decisions and helps us improve our services for everyone.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Features Section -->
+      <section class="px-4 py-16 md:px-6 md:py-20">
+        <div class="mx-auto max-w-6xl">
+          <div class="mb-12 text-center">
+            <h2 class="text-3xl md:text-4xl font-bold text-neutral-900 mb-3">
+              How It Works
+            </h2>
+            <p class="text-lg text-neutral-600 max-w-2xl mx-auto">
+              Simple steps to share your thoughts with us
+            </p>
+          </div>
+
+          <div class="grid gap-8 md:grid-cols-4">
+            <div class="text-center">
+              <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary text-white shadow-lg">
+                <span class="text-2xl font-bold">1</span>
+              </div>
+              <h3 class="text-lg font-semibold text-neutral-900 mb-2">Select a Form</h3>
+              <p class="text-sm text-neutral-600">
+                Choose from available survey forms that match your interests
+              </p>
+            </div>
+
+            <div class="text-center">
+              <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary text-white shadow-lg">
+                <span class="text-2xl font-bold">2</span>
+              </div>
+              <h3 class="text-lg font-semibold text-neutral-900 mb-2">Fill It Out</h3>
+              <p class="text-sm text-neutral-600">
+                Complete the form at your own pace, step-by-step or all at once
+              </p>
+            </div>
+
+            <div class="text-center">
+              <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary text-white shadow-lg">
+                <span class="text-2xl font-bold">3</span>
+              </div>
+              <h3 class="text-lg font-semibold text-neutral-900 mb-2">Submit</h3>
+              <p class="text-sm text-neutral-600">
+                Review your responses and submit. You can edit later if needed
+              </p>
+            </div>
+
+            <div class="text-center">
+              <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary text-white shadow-lg">
+                <span class="text-2xl font-bold">4</span>
+              </div>
+              <h3 class="text-lg font-semibold text-neutral-900 mb-2">Done!</h3>
+              <p class="text-sm text-neutral-600">
+                Your feedback is received and will help us improve our services
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-neutral-200 bg-neutral-50 px-4 py-8 md:px-6 md:py-12">
+      <div class="mx-auto max-w-7xl">
+        <div class="flex flex-col items-center justify-between gap-6 md:flex-row">
+          <div>
+            <div class="flex items-center gap-2 mb-2">
+              <div class="h-8 w-8 rounded-lg bg-primary"></div>
+              <span class="text-lg font-bold text-neutral-900">Nepa Rudraksha</span>
+            </div>
+            <p class="text-sm text-neutral-600">
+              Your feedback helps us serve you better
+            </p>
+          </div>
+          
+          <div class="flex items-center gap-6 text-sm text-neutral-600">
+            <span>© <%= new Date().getFullYear() %> All rights reserved</span>
+          </div>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

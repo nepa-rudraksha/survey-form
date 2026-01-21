@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><%= mode === 'edit' ? 'Edit Form' : 'Create Form' %></title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: { colors: { primary: "#C19A5B" } } } };
+  </script>
+</head>
+<body class="min-h-screen bg-neutral-50 text-neutral-900">
+  <header class="border-b border-neutral-200 bg-white">
+    <div class="mx-auto max-w-7xl px-4 py-6">
+      <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <div class="text-sm font-semibold tracking-wide text-neutral-600">Nepa Rudraksha</div>
+          <h1 class="mt-1 text-2xl font-semibold"><%= mode === 'edit' ? 'Edit Form' : 'Create New Form' %></h1>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <a href="/admin/forms" class="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50">
+            Back to Forms
+          </a>
+          <form method="POST" action="/admin/logout">
+            <button type="submit" class="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
+              Logout
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-6xl px-4 py-8">
+    <form id="formEditor" class="space-y-6">
+      <input type="hidden" name="form_id" value="<%= form ? form.id : '' %>" />
+
+      <!-- Form Settings -->
+      <div class="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
+        <h2 class="text-lg font-semibold mb-4">Form Settings</h2>
+        
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-semibold text-neutral-800 mb-2">Title *</label>
+            <input
+              type="text"
+              name="title"
+              value="<%= form ? form.title : '' %>"
+              required
+              class="w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15"
+              placeholder="Form title"
+            />
+          </div>
+
+          <div>
+            <label class="block text-sm font-semibold text-neutral-800 mb-2">Description</label>
+            <textarea
+              name="description"
+              rows="3"
+              class="w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15"
+              placeholder="Form description (optional)"
+            ><%= form ? (form.description || '') : '' %></textarea>
+          </div>
+
+          <div class="grid gap-4 md:grid-cols-2">
+            <div>
+              <label class="block text-sm font-semibold text-neutral-800 mb-2">Slug *</label>
+              <input
+                type="text"
+                name="slug"
+                value="<%= form ? form.slug : '' %>"
+                required
+                pattern="[a-z0-9-]+"
+                class="w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15"
+                placeholder="form-slug"
+              />
+              <p class="mt-1 text-xs text-neutral-600">URL-friendly identifier (lowercase, hyphens only)</p>
+            </div>
+
+            <div>
+              <label class="block text-sm font-semibold text-neutral-800 mb-2">Status</label>
+              <select
+                name="status"
+                class="w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15"
+              >
+                <option value="draft" <%= form && form.status === 'draft' ? 'selected' : '' %>>Draft</option>
+                <option value="published" <%= form && form.status === 'published' ? 'selected' : '' %>>Published</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label class="flex items-center gap-3">
+              <input
+                type="checkbox"
+                name="show_on_homepage"
+                <%= form && form.show_on_homepage ? 'checked' : '' %>
+                class="accent-primary"
+              />
+              <span class="text-sm font-semibold text-neutral-800">Show on homepage</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sections & Fields -->
+      <div class="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-lg font-semibold">Sections & Fields</h2>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              onclick="addSection()"
+              class="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50"
+            >
+              Add Section
+            </button>
+            <button
+              type="button"
+              onclick="addField()"
+              class="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-95"
+            >
+              Add Field
+            </button>
+          </div>
+        </div>
+
+        <div id="sectionsContainer" class="space-y-6">
+          <!-- Sections and fields will be added here by JavaScript -->
+        </div>
+
+        <div id="fieldsWithoutSectionContainer" class="mt-6 space-y-4">
+          <h3 class="text-sm font-semibold text-neutral-700 mb-3">Fields without section</h3>
+          <!-- Fields without section will be added here -->
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div class="flex items-center justify-end gap-3">
+        <a href="/admin/forms" class="rounded-xl border border-neutral-300 bg-white px-5 py-3 text-sm font-semibold hover:bg-neutral-50">
+          Cancel
+        </a>
+        <button
+          type="submit"
+          class="rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-white hover:opacity-95"
+        >
+          Save Form
+        </button>
+      </div>
+    </form>
+  </main>
+
+  <script>
+    const fieldTypes = [
+      { value: 'text', label: 'Text' },
+      { value: 'textarea', label: 'Textarea' },
+      { value: 'number', label: 'Number' },
+      { value: 'phone', label: 'Phone' },
+      { value: 'email', label: 'Email' },
+      { value: 'date', label: 'Date' },
+      { value: 'dropdown', label: 'Dropdown' },
+      { value: 'radio', label: 'Radio' },
+      { value: 'checkbox', label: 'Checkbox' },
+      { value: 'consent', label: 'Consent Checkbox' },
+    ];
+
+    let fieldCounter = 0;
+    let sectionCounter = 0;
+
+    function generateFieldKey() {
+      return 'field_' + (++fieldCounter) + '_' + Date.now();
+    }
+
+    function generateSectionId() {
+      return 'section_' + (++sectionCounter) + '_' + Date.now();
+    }
+
+    function addSection(sectionData = null) {
+      const container = document.getElementById('sectionsContainer');
+      const sectionId = sectionData ? (sectionData.temp_id || sectionData.id) : generateSectionId();
+      const section = sectionData || {
+        title: '',
+        description: '',
+      };
+
+      const sectionDiv = document.createElement('div');
+      sectionDiv.className = 'rounded-xl border-2 border-primary/30 bg-white p-4';
+      sectionDiv.dataset.sectionId = sectionId;
+
+      sectionDiv.innerHTML = `
+        <div class="flex items-start justify-between mb-4">
+          <div class="flex-1">
+            <input
+              type="text"
+              name="section_title_${sectionId}"
+              value="${section.title || ''}"
+              placeholder="Section Title *"
+              required
+              class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm font-semibold"
+            />
+            <textarea
+              name="section_description_${sectionId}"
+              rows="2"
+              placeholder="Section description (optional)"
+              class="mt-2 w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+            >${section.description || ''}</textarea>
+          </div>
+          <button
+            type="button"
+            onclick="removeSection('${sectionId}')"
+            class="ml-3 text-red-600 hover:text-red-700 text-sm font-semibold"
+          >
+            Remove Section
+          </button>
+        </div>
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-xs font-semibold text-neutral-600">Fields in this section</span>
+          <button
+            type="button"
+            onclick="addFieldToSection('${sectionId}')"
+            class="rounded-lg border border-neutral-300 bg-white px-3 py-1 text-xs font-semibold hover:bg-neutral-50"
+          >
+            + Add Field
+          </button>
+        </div>
+        <div id="fields_${sectionId}" class="space-y-3">
+          <!-- Fields will be added here -->
+        </div>
+      `;
+
+      container.appendChild(sectionDiv);
+    }
+
+    function removeSection(sectionId) {
+      const section = document.querySelector(`[data-section-id="${sectionId}"]`);
+      if (section && confirm('Remove this section and all its fields?')) {
+        section.remove();
+      }
+    }
+
+    function addField(fieldData = null, sectionId = null) {
+      const container = sectionId 
+        ? document.getElementById(`fields_${sectionId}`)
+        : document.getElementById('fieldsWithoutSectionContainer');
+      
+      if (!container) {
+        // If section container doesn't exist, add to fields without section
+        container = document.getElementById('fieldsWithoutSectionContainer');
+        sectionId = null;
+      }
+
+      const fieldId = fieldData ? (fieldData.temp_id || fieldData.id) : generateFieldKey();
+      const field = fieldData || {
+        field_key: '',
+        field_type: 'text',
+        label: '',
+        placeholder: '',
+        required: false,
+        options: [],
+      };
+
+      const fieldDiv = document.createElement('div');
+      fieldDiv.className = 'rounded-xl border border-neutral-200 bg-neutral-50 p-4';
+      fieldDiv.dataset.fieldId = fieldId;
+      if (sectionId) {
+        fieldDiv.dataset.sectionId = sectionId;
+      }
+
+      fieldDiv.innerHTML = `
+        <div class="flex items-start justify-between mb-3">
+          <h3 class="text-sm font-semibold text-neutral-900">Field</h3>
+          <div class="flex gap-2">
+            ${sectionId ? `<button type="button" onclick="moveFieldToNoSection('${fieldId}')" class="text-xs text-neutral-600 hover:text-neutral-900">Move out</button>` : ''}
+            <button
+              type="button"
+              onclick="removeField('${fieldId}')"
+              class="text-red-600 hover:text-red-700 text-sm font-semibold"
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+
+        <div class="grid gap-4 md:grid-cols-2">
+          <div>
+            <label class="block text-xs font-semibold text-neutral-700 mb-1">Field Key *</label>
+            <input
+              type="text"
+              name="field_key_${fieldId}"
+              value="${field.field_key || ''}"
+              required
+              pattern="[a-z0-9_]+"
+              class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+              placeholder="field_key"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-neutral-700 mb-1">Field Type *</label>
+            <select
+              name="field_type_${fieldId}"
+              onchange="updateFieldType('${fieldId}', this.value)"
+              class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+            >
+              ${fieldTypes.map(t => `<option value="${t.value}" ${field.field_type === t.value ? 'selected' : ''}>${t.label}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+
+        <div class="mt-3">
+          <label class="block text-xs font-semibold text-neutral-700 mb-1">Label *</label>
+          <input
+            type="text"
+            name="field_label_${fieldId}"
+            value="${field.label || ''}"
+            required
+            class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+            placeholder="Field label"
+          />
+        </div>
+
+        <div class="mt-3">
+          <label class="block text-xs font-semibold text-neutral-700 mb-1">Placeholder</label>
+          <input
+            type="text"
+            name="field_placeholder_${fieldId}"
+            value="${field.placeholder || ''}"
+            class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+            placeholder="Placeholder text"
+          />
+        </div>
+
+        <div class="mt-3" id="options_container_${fieldId}" style="display: ${['dropdown', 'radio', 'checkbox'].includes(field.field_type) ? 'block' : 'none'};">
+          <label class="block text-xs font-semibold text-neutral-700 mb-1">Options (one per line, format: value|label or just label)</label>
+          <textarea
+            id="options_text_${fieldId}"
+            rows="4"
+            class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+            placeholder="value1|Label 1&#10;value2|Label 2&#10;Label 3"
+          >${formatOptionsForTextarea(field.options || [])}</textarea>
+        </div>
+
+        <div class="mt-3">
+          <label class="flex items-center gap-2">
+            <input
+              type="checkbox"
+              name="field_required_${fieldId}"
+              ${field.required ? 'checked' : ''}
+              class="accent-primary"
+            />
+            <span class="text-xs font-semibold text-neutral-700">Required</span>
+          </label>
+        </div>
+      `;
+
+      container.appendChild(fieldDiv);
+    }
+
+    function addFieldToSection(sectionId, fieldData = null) {
+      addField(fieldData, sectionId);
+    }
+
+    function moveFieldToNoSection(fieldId) {
+      const field = document.querySelector(`[data-field-id="${fieldId}"]`);
+      if (field) {
+        field.removeAttribute('data-section-id');
+        const container = document.getElementById('fieldsWithoutSectionContainer');
+        container.appendChild(field);
+      }
+    }
+
+    function formatOptionsForTextarea(options) {
+      if (!Array.isArray(options)) return '';
+      return options.map(opt => {
+        if (typeof opt === 'string') return opt;
+        if (opt.value && opt.label) return `${opt.value}|${opt.label}`;
+        return opt.label || opt.value || '';
+      }).join('\n');
+    }
+
+    function updateFieldType(fieldId, type) {
+      const container = document.getElementById(`options_container_${fieldId}`);
+      if (container) {
+        if (['dropdown', 'radio', 'checkbox'].includes(type)) {
+          container.style.display = 'block';
+        } else {
+          container.style.display = 'none';
+        }
+      }
+    }
+
+    function removeField(fieldId) {
+      const field = document.querySelector(`[data-field-id="${fieldId}"]`);
+      if (field && confirm('Remove this field?')) {
+        field.remove();
+      }
+    }
+
+    // Initialize sections and fields
+    const sectionsData = <%- JSON.stringify(sections || []) %>;
+    const fieldsBySectionData = <%- JSON.stringify(fieldsBySection || {}) %>;
+    const fieldsWithoutSectionData = <%- JSON.stringify(fieldsWithoutSection || []) %>;
+
+    // Create a map of section IDs to temp IDs for field assignment
+    const sectionIdMap = {};
+
+    if (sectionsData && sectionsData.length > 0) {
+      sectionsData.forEach(section => {
+        const tempId = generateSectionId();
+        sectionIdMap[section.id] = tempId;
+        addSection({ ...section, temp_id: tempId });
+      });
+    }
+
+    // Initialize fields in sections
+    if (fieldsBySectionData && Object.keys(fieldsBySectionData).length > 0) {
+      Object.keys(fieldsBySectionData).forEach(sectionId => {
+        const tempSectionId = sectionIdMap[sectionId];
+        if (tempSectionId && fieldsBySectionData[sectionId]) {
+          fieldsBySectionData[sectionId].forEach(field => {
+            addFieldToSection(tempSectionId, { ...field, temp_id: generateFieldKey() });
+          });
+        }
+      });
+    }
+
+    // Initialize fields without section
+    if (fieldsWithoutSectionData && fieldsWithoutSectionData.length > 0) {
+      fieldsWithoutSectionData.forEach(field => {
+        addField({ ...field, temp_id: generateFieldKey() });
+      });
+    }
+
+    // If no sections and no fields, add one field
+    if ((!sectionsData || sectionsData.length === 0) && (!fieldsWithoutSectionData || fieldsWithoutSectionData.length === 0)) {
+      addField();
+    }
+
+    // Handle form submission
+    document.getElementById('formEditor').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const formData = new FormData(e.target);
+      const sectionsData = [];
+      const fieldsData = [];
+
+      // Collect sections (deduplicate by temp_id)
+      const sectionContainers = document.querySelectorAll('[data-section-id]');
+      const seenSectionIds = new Set();
+      sectionContainers.forEach(container => {
+        const sectionId = container.dataset.sectionId;
+        if (seenSectionIds.has(sectionId)) {
+          console.warn(`Duplicate section ID detected: ${sectionId}, skipping`);
+          return;
+        }
+        seenSectionIds.add(sectionId);
+        
+        const title = formData.get(`section_title_${sectionId}`);
+        const description = formData.get(`section_description_${sectionId}`);
+        if (title && title.trim()) {
+          sectionsData.push({
+            temp_id: sectionId,
+            title: title.trim(),
+            description: description ? description.trim() : null,
+          });
+        }
+      });
+
+      // Collect all fields
+      const fieldContainers = document.querySelectorAll('[data-field-id]');
+      fieldContainers.forEach(container => {
+        const fieldId = container.dataset.fieldId;
+        const sectionId = container.dataset.sectionId;
+        const fieldKey = formData.get(`field_key_${fieldId}`);
+        const fieldType = formData.get(`field_type_${fieldId}`);
+        const label = formData.get(`field_label_${fieldId}`);
+        const placeholder = formData.get(`field_placeholder_${fieldId}`);
+        const required = formData.get(`field_required_${fieldId}`) === 'on';
+
+        let options = [];
+        if (['dropdown', 'radio', 'checkbox'].includes(fieldType)) {
+          const optionsTextEl = document.getElementById(`options_text_${fieldId}`);
+          if (optionsTextEl && optionsTextEl.value) {
+            options = optionsTextEl.value.split('\n').map(line => {
+              line = line.trim();
+              if (!line) return null;
+              if (line.includes('|')) {
+                const [value, label] = line.split('|').map(s => s.trim());
+                return { value, label: label || value };
+              }
+              return { value: line, label: line };
+            }).filter(Boolean);
+          }
+        }
+
+        if (fieldKey && label) {
+          fieldsData.push({
+            temp_id: fieldId,
+            section_id: sectionId || null,
+            field_key: fieldKey,
+            field_type: fieldType,
+            label: label,
+            placeholder: placeholder || null,
+            required: required,
+            options: options.length > 0 ? options : null,
+          });
+        }
+      });
+
+      const payload = {
+        form_id: formData.get('form_id') || null,
+        title: formData.get('title'),
+        description: formData.get('description') || '',
+        slug: formData.get('slug'),
+        show_on_homepage: formData.get('show_on_homepage') === 'on' ? 'on' : '',
+        status: formData.get('status'),
+        sections: JSON.stringify(sectionsData),
+        fields: JSON.stringify(fieldsData),
+      };
+
+      try {
+        const res = await fetch('/admin/forms/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams(payload),
+        });
+
+        const data = await res.json();
+        if (data.success) {
+          window.location.href = '/admin/forms';
+        } else {
+          alert(data.error || 'Error saving form');
+        }
+      } catch (e) {
+        alert('Error saving form');
+      }
+    });
+  </script>
+</body>
+</html>

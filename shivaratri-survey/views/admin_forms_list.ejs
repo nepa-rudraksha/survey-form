@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Manage Forms</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: { colors: { primary: "#C19A5B" } } } };
+  </script>
+</head>
+<body class="min-h-screen bg-neutral-50 text-neutral-900">
+  <header class="border-b border-neutral-200 bg-white">
+    <div class="mx-auto max-w-7xl px-4 py-6">
+      <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <div class="text-sm font-semibold tracking-wide text-neutral-600">Nepa Rudraksha</div>
+          <h1 class="mt-1 text-2xl font-semibold">Manage Forms</h1>
+          <p class="mt-1 text-sm text-neutral-600">Create and manage survey forms</p>
+        </div>
+
+        <div class="flex items-center gap-2">
+          
+          <a href="/admin/forms/new" class="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
+            Create New Form
+          </a>
+          <form method="POST" action="/admin/logout">
+            <button type="submit" class="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
+              Logout
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-7xl px-4 py-8">
+    <% if (!forms || forms.length === 0) { %>
+      <div class="rounded-2xl border border-neutral-200 bg-white p-8 text-center shadow-sm">
+        <p class="text-neutral-600 mb-4">No forms created yet.</p>
+        <a href="/admin/forms/new" class="inline-flex rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-white hover:opacity-95">
+          Create Your First Form
+        </a>
+      </div>
+    <% } else { %>
+      <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <% forms.forEach(function(form) { %>
+          <div class="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
+            <div class="flex items-start justify-between mb-4">
+              <h2 class="text-lg font-semibold text-neutral-900"><%= form.title %></h2>
+              <span class="rounded-full px-2 py-1 text-xs font-semibold <%= form.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700' %>">
+                <%= form.status %>
+              </span>
+            </div>
+            
+            <% if (form.description) { %>
+              <p class="text-sm text-neutral-600 mb-4 line-clamp-2"><%= form.description %></p>
+            <% } %>
+
+            <div class="space-y-2 mb-4">
+              <div class="flex items-center justify-between text-xs text-neutral-600">
+                <span>Slug:</span>
+                <code class="bg-neutral-100 px-2 py-1 rounded"><%= form.slug %></code>
+              </div>
+              <div class="flex items-center justify-between text-xs text-neutral-600">
+                <span>Responses:</span>
+                <span class="font-semibold text-neutral-900"><%= form.response_count || 0 %></span>
+              </div>
+              <div class="flex items-center justify-between text-xs text-neutral-600">
+                <span>Show on homepage:</span>
+                <span class="font-semibold <%= form.show_on_homepage ? 'text-green-600' : 'text-neutral-500' %>">
+                  <%= form.show_on_homepage ? 'Yes' : 'No' %>
+                </span>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap gap-2">
+              <a href="/forms/<%= form.slug %>" target="_blank" class="flex-1 rounded-xl border border-neutral-300 bg-white px-3 py-2 text-xs font-semibold text-center hover:bg-neutral-50">
+                View
+              </a>
+              <a href="/admin/forms/<%= form.id %>/edit" class="flex-1 rounded-xl border border-neutral-300 bg-white px-3 py-2 text-xs font-semibold text-center hover:bg-neutral-50">
+                Edit
+              </a>
+              <a href="/admin/forms/<%= form.id %>/responses" class="flex-1 rounded-xl border border-neutral-300 bg-white px-3 py-2 text-xs font-semibold text-center hover:bg-neutral-50">
+                Responses
+              </a>
+              <a href="/admin/forms/<%= form.id %>/report" class="flex-1 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-xs font-semibold text-primary text-center hover:bg-primary/10">
+                Report
+              </a>
+              <button
+                onclick="deleteForm(<%= form.id %>)"
+                class="rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        <% }); %>
+      </div>
+    <% } %>
+  </main>
+
+  <script>
+    async function deleteForm(id) {
+      if (!confirm("Are you sure you want to delete this form? This action cannot be undone.")) return;
+
+      try {
+        const res = await fetch(`/admin/forms/${id}/delete`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+
+        if (res.ok) {
+          window.location.reload();
+        } else {
+          alert("Error deleting form");
+        }
+      } catch (e) {
+        alert("Error deleting form");
+      }
+    }
+  </script>
+</body>
+</html>

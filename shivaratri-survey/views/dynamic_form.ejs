@@ -1,0 +1,604 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title><%= form.title %></title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: { extend: { colors: { primary: "#C19A5B" } } },
+      };
+    </script>
+  </head>
+
+  <body class="min-h-screen bg-neutral-50 text-neutral-900 overflow-x-hidden">
+    <header class="border-b border-neutral-200 bg-white">
+      <div
+        class="mx-auto max-w-full px-4 py-6 md:px-6 md:py-10 flex justify-center"
+        style="
+          background:
+            radial-gradient(900px circle at 15% 10%, rgba(193,154,91,.18), transparent 58%),
+            radial-gradient(800px circle at 85% 0%, rgba(193,154,91,.12), transparent 60%),
+            linear-gradient(180deg, #ffffff, #fafafa);
+        "
+      >
+        <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between md:gap-6 min-w-0 max-w-6xl w-full">
+          <div class="min-w-0">
+            <h1 class="text-2xl md:text-3xl font-semibold tracking-tight leading-tight">
+              <%= form.title %>
+            </h1>
+            <% if (form.description) { %>
+              <p class="mt-2 text-sm md:text-base text-neutral-600 leading-relaxed">
+                <%= form.description %>
+              </p>
+            <% } %>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="mx-auto w-full max-w-4xl px-4 py-8 pb-[calc(env(safe-area-inset-bottom)+7rem)]">
+      <div class="w-full max-w-full rounded-2xl border border-neutral-200 bg-white shadow-sm overflow-hidden">
+        <div class="p-5 md:p-8">
+          <!-- MODE TOGGLE -->
+          <div class="mt-8 flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-neutral-50 p-4 md:flex-row md:items-center md:justify-between">
+            <div class="min-w-0">
+              <p class="text-sm font-semibold text-neutral-900">
+                <%= pageMode === 'edit' ? 'Update your response' : 'Form layout' %>
+              </p>
+              <p class="text-xs text-neutral-600 break-words">
+                Choose a step-by-step experience or fill everything on a single page.
+              </p>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" id="modeStep" class="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold text-neutral-900 shadow-sm hover:bg-neutral-50">
+                Step-by-step
+              </button>
+              <button type="button" id="modeSingle" class="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold text-neutral-900 shadow-sm hover:bg-neutral-50">
+                Single page
+              </button>
+            </div>
+          </div>
+
+          <!-- PROGRESS -->
+          <div id="wizardProgress" class="mt-6 hidden">
+            <div class="flex items-center justify-between min-w-0 gap-3">
+              <p class="text-sm font-semibold text-neutral-900">Progress</p>
+              <p id="progressText" class="text-sm text-neutral-600 shrink-0"></p>
+            </div>
+            <div class="mt-2 h-2 w-full rounded-full bg-neutral-100">
+              <div id="progressBar" class="h-2 rounded-full bg-primary" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <form action="<%= pageMode === 'edit' ? ('/forms/' + form.slug + '/update/' + editKey) : ('/forms/' + form.slug + '/submit') %>" method="POST" class="mt-8 space-y-10" id="surveyForm">
+            <input type="hidden" name="utm_source" id="utm_source" value="" />
+            <input type="hidden" name="utm_medium" id="utm_medium" value="" />
+            <input type="hidden" name="utm_campaign" id="utm_campaign" value="" />
+            <input type="hidden" name="referrer" id="referrer" value="" />
+
+            <% 
+              // Organize fields by sections
+              const allFields = [...Object.values(fieldsBySection || {}).flat(), ...(fieldsWithoutSection || [])];
+              const fieldsPerStep = 4;
+              
+              // Calculate total steps: sections + fields without section
+              let totalSteps = (sections || []).length;
+              if (fieldsWithoutSection && fieldsWithoutSection.length > 0) {
+                totalSteps += Math.ceil(fieldsWithoutSection.length / fieldsPerStep);
+              }
+              if (totalSteps === 0) totalSteps = 1;
+              
+              let currentStep = 1;
+            %>
+
+            <% 
+              // Render sections with their fields
+              if (sections && sections.length > 0) {
+                sections.forEach(function(section) {
+                  const sectionFields = fieldsBySection[section.id] || [];
+                  // Always render section, even if empty
+            %>
+              <section class="step-section" data-step="<%= currentStep %>">
+                <div class="flex items-center justify-between gap-4 min-w-0">
+                  <h2 class="text-lg font-semibold text-neutral-900 min-w-0 break-words">
+                    <%= section.title %>
+                  </h2>
+                  <span class="step-badge hidden shrink-0 rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-700">Step <%= currentStep %></span>
+                </div>
+                <% if (section.description) { %>
+                  <p class="mt-2 text-sm text-neutral-600"><%= section.description %></p>
+                <% } %>
+
+                <div class="mt-4 grid gap-4 md:grid-cols-2">
+                  <% 
+                    if (sectionFields.length > 0) {
+                      sectionFields.forEach(function(field) {
+                        const fieldValue = values[field.field_key] || '';
+                        const fieldOptions = field.options ? (typeof field.options === 'string' ? JSON.parse(field.options) : field.options) : [];
+                        const isFullWidth = ['textarea', 'checkbox'].includes(field.field_type);
+                  %>
+                    <div class="<%= isFullWidth ? 'md:col-span-2' : '' %>">
+                      <label class="block text-sm font-medium text-neutral-800">
+                        <%= field.label %>
+                        <% if (field.required) { %><span class="text-red-500">*</span><% } %>
+                      </label>
+
+                      <% if (field.field_type === 'text' || field.field_type === 'email' || field.field_type === 'phone' || field.field_type === 'number') { %>
+                        <input
+                          name="<%= field.field_key %>"
+                          type="<%= field.field_type === 'email' ? 'email' : field.field_type === 'number' ? 'number' : 'text' %>"
+                          <% if (field.field_type === 'phone') { %>inputmode="tel"<% } %>
+                          value="<%= fieldValue %>"
+                          <% if (field.required) { %>required<% } %>
+                          placeholder="<%= field.placeholder || '' %>"
+                          class="mt-2 w-full rounded-xl border <%= errors[field.field_key] ? 'border-red-300' : 'border-neutral-300' %> bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15"
+                        />
+                        <% if (errors[field.field_key]) { %>
+                          <p class="mt-2 text-sm text-red-600"><%= errors[field.field_key] %></p>
+                        <% } %>
+
+                      <% } else if (field.field_type === 'textarea') { %>
+                        <textarea
+                          name="<%= field.field_key %>"
+                          rows="4"
+                          <% if (field.required) { %>required<% } %>
+                          placeholder="<%= field.placeholder || '' %>"
+                          class="mt-2 w-full rounded-xl border <%= errors[field.field_key] ? 'border-red-300' : 'border-neutral-300' %> bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15"
+                        ><%= fieldValue %></textarea>
+                        <% if (errors[field.field_key]) { %>
+                          <p class="mt-2 text-sm text-red-600"><%= errors[field.field_key] %></p>
+                        <% } %>
+
+                      <% } else if (field.field_type === 'dropdown') { %>
+                        <select
+                          name="<%= field.field_key %>"
+                          <% if (field.required) { %>required<% } %>
+                          class="mt-2 w-full rounded-xl border <%= errors[field.field_key] ? 'border-red-300' : 'border-neutral-300' %> bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15"
+                        >
+                          <option value="">Select</option>
+                          <% fieldOptions.forEach(function(opt) { %>
+                            <option value="<%= opt.value || opt %>" <%= (fieldValue === (opt.value || opt)) ? 'selected' : '' %>>
+                              <%= opt.label || opt %>
+                            </option>
+                          <% }); %>
+                        </select>
+                        <% if (errors[field.field_key]) { %>
+                          <p class="mt-2 text-sm text-red-600"><%= errors[field.field_key] %></p>
+                        <% } %>
+
+                      <% } else if (field.field_type === 'radio') { %>
+                        <div class="mt-2 space-y-2">
+                          <% fieldOptions.forEach(function(opt) { %>
+                            <label class="flex items-center gap-3 rounded-xl border border-neutral-200 bg-white p-3">
+                              <input
+                                type="radio"
+                                name="<%= field.field_key %>"
+                                value="<%= opt.value || opt %>"
+                                <% if (fieldValue === (opt.value || opt)) { %>checked<% } %>
+                                <% if (field.required) { %>required<% } %>
+                                class="accent-primary"
+                              />
+                              <span class="text-sm text-neutral-800"><%= opt.label || opt %></span>
+                            </label>
+                          <% }); %>
+                        </div>
+                        <% if (errors[field.field_key]) { %>
+                          <p class="mt-2 text-sm text-red-600"><%= errors[field.field_key] %></p>
+                        <% } %>
+
+                      <% } else if (field.field_type === 'checkbox') { %>
+                        <div class="mt-2 space-y-2">
+                          <% fieldOptions.forEach(function(opt) { %>
+                            <% 
+                              const optValue = opt.value || opt;
+                              const checkedValues = Array.isArray(fieldValue) ? fieldValue : (fieldValue ? [fieldValue] : []);
+                              const isChecked = checkedValues.includes(optValue);
+                            %>
+                            <label class="flex items-center gap-3 rounded-xl border border-neutral-200 bg-white p-3">
+                              <input
+                                type="checkbox"
+                                name="<%= field.field_key %>"
+                                value="<%= optValue %>"
+                                <% if (isChecked) { %>checked<% } %>
+                                class="accent-primary"
+                              />
+                              <span class="text-sm text-neutral-800"><%= opt.label || opt %></span>
+                            </label>
+                          <% }); %>
+                        </div>
+                        <% if (errors[field.field_key]) { %>
+                          <p class="mt-2 text-sm text-red-600"><%= errors[field.field_key] %></p>
+                        <% } %>
+
+                      <% } else if (field.field_type === 'date') { %>
+                        <input
+                          name="<%= field.field_key %>"
+                          type="date"
+                          value="<%= fieldValue %>"
+                          <% if (field.required) { %>required<% } %>
+                          class="mt-2 w-full rounded-xl border <%= errors[field.field_key] ? 'border-red-300' : 'border-neutral-300' %> bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15"
+                        />
+                        <% if (errors[field.field_key]) { %>
+                          <p class="mt-2 text-sm text-red-600"><%= errors[field.field_key] %></p>
+                        <% } %>
+
+                      <% } else if (field.field_type === 'consent') { %>
+                        <label class="flex items-start gap-3 rounded-xl border border-neutral-200 bg-white p-4 mt-2">
+                          <input
+                            type="checkbox"
+                            name="<%= field.field_key %>"
+                            value="yes"
+                            <% if (field.required) { %>required<% } %>
+                            <% if (fieldValue === 'yes' || fieldValue === true) { %>checked<% } %>
+                            class="mt-1 accent-primary shrink-0"
+                          />
+                          <span class="text-sm text-neutral-800 flex-1"><%= field.placeholder || 'I agree to the terms' %></span>
+                        </label>
+                        <% if (errors[field.field_key]) { %>
+                          <p class="mt-2 text-sm text-red-600"><%= errors[field.field_key] %></p>
+                        <% } %>
+                      <% } %>
+                    </div>
+                  <% 
+                      });
+                    } else {
+                  %>
+                    <div class="md:col-span-2 text-sm text-neutral-500 italic">
+                      No fields in this section yet.
+                    </div>
+                  <% } %>
+                </div>
+              </section>
+            <% 
+                    currentStep++;
+                });
+              }
+              
+              // Render fields without section
+              if (fieldsWithoutSection && fieldsWithoutSection.length > 0) {
+                let fieldIndex = 0;
+                while (fieldIndex < fieldsWithoutSection.length) {
+                  const stepEnd = Math.min(fieldIndex + fieldsPerStep, fieldsWithoutSection.length);
+            %>
+              <section class="step-section" data-step="<%= currentStep %>">
+                <div class="flex items-center justify-between gap-4 min-w-0">
+                  <h2 class="text-lg font-semibold text-neutral-900 min-w-0 break-words">
+                    Additional Information
+                  </h2>
+                  <span class="step-badge hidden shrink-0 rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-700">Step <%= currentStep %></span>
+                </div>
+
+                <div class="mt-4 grid gap-4 md:grid-cols-2">
+                  <% 
+                    for (let i = fieldIndex; i < stepEnd; i++) {
+                      const field = fieldsWithoutSection[i];
+                      const fieldValue = values[field.field_key] || '';
+                      const fieldOptions = field.options ? (typeof field.options === 'string' ? JSON.parse(field.options) : field.options) : [];
+                      const isFullWidth = ['textarea', 'checkbox'].includes(field.field_type);
+                  %>
+                    <div class="<%= isFullWidth ? 'md:col-span-2' : '' %>">
+                      <label class="block text-sm font-medium text-neutral-800">
+                        <%= field.label %>
+                        <% if (field.required) { %><span class="text-red-500">*</span><% } %>
+                      </label>
+
+                      <% if (field.field_type === 'text' || field.field_type === 'email' || field.field_type === 'phone' || field.field_type === 'number') { %>
+                        <input
+                          name="<%= field.field_key %>"
+                          type="<%= field.field_type === 'email' ? 'email' : field.field_type === 'number' ? 'number' : 'text' %>"
+                          <% if (field.field_type === 'phone') { %>inputmode="tel"<% } %>
+                          value="<%= fieldValue %>"
+                          <% if (field.required) { %>required<% } %>
+                          placeholder="<%= field.placeholder || '' %>"
+                          class="mt-2 w-full rounded-xl border <%= errors[field.field_key] ? 'border-red-300' : 'border-neutral-300' %> bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15"
+                        />
+                        <% if (errors[field.field_key]) { %>
+                          <p class="mt-2 text-sm text-red-600"><%= errors[field.field_key] %></p>
+                        <% } %>
+
+                      <% } else if (field.field_type === 'textarea') { %>
+                        <textarea
+                          name="<%= field.field_key %>"
+                          rows="4"
+                          <% if (field.required) { %>required<% } %>
+                          placeholder="<%= field.placeholder || '' %>"
+                          class="mt-2 w-full rounded-xl border <%= errors[field.field_key] ? 'border-red-300' : 'border-neutral-300' %> bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15"
+                        ><%= fieldValue %></textarea>
+                        <% if (errors[field.field_key]) { %>
+                          <p class="mt-2 text-sm text-red-600"><%= errors[field.field_key] %></p>
+                        <% } %>
+
+                      <% } else if (field.field_type === 'dropdown') { %>
+                        <select
+                          name="<%= field.field_key %>"
+                          <% if (field.required) { %>required<% } %>
+                          class="mt-2 w-full rounded-xl border <%= errors[field.field_key] ? 'border-red-300' : 'border-neutral-300' %> bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15"
+                        >
+                          <option value="">Select</option>
+                          <% fieldOptions.forEach(function(opt) { %>
+                            <option value="<%= opt.value || opt %>" <%= (fieldValue === (opt.value || opt)) ? 'selected' : '' %>>
+                              <%= opt.label || opt %>
+                            </option>
+                          <% }); %>
+                        </select>
+                        <% if (errors[field.field_key]) { %>
+                          <p class="mt-2 text-sm text-red-600"><%= errors[field.field_key] %></p>
+                        <% } %>
+
+                      <% } else if (field.field_type === 'radio') { %>
+                        <div class="mt-2 space-y-2">
+                          <% fieldOptions.forEach(function(opt) { %>
+                            <label class="flex items-center gap-3 rounded-xl border border-neutral-200 bg-white p-3">
+                              <input
+                                type="radio"
+                                name="<%= field.field_key %>"
+                                value="<%= opt.value || opt %>"
+                                <% if (fieldValue === (opt.value || opt)) { %>checked<% } %>
+                                <% if (field.required) { %>required<% } %>
+                                class="accent-primary"
+                              />
+                              <span class="text-sm text-neutral-800"><%= opt.label || opt %></span>
+                            </label>
+                          <% }); %>
+                        </div>
+                        <% if (errors[field.field_key]) { %>
+                          <p class="mt-2 text-sm text-red-600"><%= errors[field.field_key] %></p>
+                        <% } %>
+
+                      <% } else if (field.field_type === 'checkbox') { %>
+                        <div class="mt-2 space-y-2">
+                          <% fieldOptions.forEach(function(opt) { %>
+                            <% 
+                              const optValue = opt.value || opt;
+                              const checkedValues = Array.isArray(fieldValue) ? fieldValue : (fieldValue ? [fieldValue] : []);
+                              const isChecked = checkedValues.includes(optValue);
+                            %>
+                            <label class="flex items-center gap-3 rounded-xl border border-neutral-200 bg-white p-3">
+                              <input
+                                type="checkbox"
+                                name="<%= field.field_key %>"
+                                value="<%= optValue %>"
+                                <% if (isChecked) { %>checked<% } %>
+                                class="accent-primary"
+                              />
+                              <span class="text-sm text-neutral-800"><%= opt.label || opt %></span>
+                            </label>
+                          <% }); %>
+                        </div>
+                        <% if (errors[field.field_key]) { %>
+                          <p class="mt-2 text-sm text-red-600"><%= errors[field.field_key] %></p>
+                        <% } %>
+
+                      <% } else if (field.field_type === 'date') { %>
+                        <input
+                          name="<%= field.field_key %>"
+                          type="date"
+                          value="<%= fieldValue %>"
+                          <% if (field.required) { %>required<% } %>
+                          class="mt-2 w-full rounded-xl border <%= errors[field.field_key] ? 'border-red-300' : 'border-neutral-300' %> bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15"
+                        />
+                        <% if (errors[field.field_key]) { %>
+                          <p class="mt-2 text-sm text-red-600"><%= errors[field.field_key] %></p>
+                        <% } %>
+
+                      <% } else if (field.field_type === 'consent') { %>
+                        <label class="flex items-start gap-3 rounded-xl border border-neutral-200 bg-white p-4 mt-2">
+                          <input
+                            type="checkbox"
+                            name="<%= field.field_key %>"
+                            value="yes"
+                            <% if (field.required) { %>required<% } %>
+                            <% if (fieldValue === 'yes' || fieldValue === true) { %>checked<% } %>
+                            class="mt-1 accent-primary shrink-0"
+                          />
+                          <span class="text-sm text-neutral-800 flex-1"><%= field.placeholder || 'I agree to the terms' %></span>
+                        </label>
+                        <% if (errors[field.field_key]) { %>
+                          <p class="mt-2 text-sm text-red-600"><%= errors[field.field_key] %></p>
+                        <% } %>
+                      <% } %>
+                    </div>
+                  <% 
+                    }
+                    fieldIndex = stepEnd;
+                    currentStep++;
+                  %>
+                </div>
+              </section>
+            <% 
+                }
+              }
+            %>
+
+            <!-- ACTION BAR -->
+            <div
+              id="actionBar"
+              class="sticky bottom-0 -mx-5 md:-mx-8 mt-6 border-t border-neutral-200 bg-white/95 backdrop-blur px-5 md:px-8 py-4"
+              style="padding-bottom: calc(env(safe-area-inset-bottom) + 1rem);"
+            >
+              <div id="wizardNav" class="hidden">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <button
+                    type="button"
+                    id="btnBack"
+                    class="w-full rounded-xl border border-neutral-300 bg-white px-5 py-3 text-sm font-semibold text-neutral-900 shadow-sm hover:bg-neutral-50 sm:w-auto"
+                  >
+                    Back
+                  </button>
+
+                  <div class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
+                    <button type="button" id="btnNext" class="w-full rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-white shadow-sm hover:opacity-95 sm:w-auto">
+                      Next
+                    </button>
+
+                    <button type="submit" id="btnSubmitWizard" class="hidden w-full rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-white shadow-sm hover:opacity-95 sm:w-auto">
+                      <%= pageMode === 'edit' ? 'Update' : 'Submit' %>
+                    </button>
+                  </div>
+                </div>
+
+                <p class="mt-3 text-xs text-neutral-500">
+                  Tip: You can switch to "Single page" if you prefer to review everything at once.
+                </p>
+              </div>
+
+              <div id="singleSubmit" class="hidden">
+                <button type="submit" class="w-full rounded-xl bg-primary px-5 py-4 text-sm font-semibold text-white shadow-sm hover:opacity-95">
+                  <%= pageMode === 'edit' ? 'Update' : 'Submit' %>
+                </button>
+                <p class="mt-3 text-center text-xs text-neutral-500">
+                  By submitting, you agree to be contacted for updates.
+                </p>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+    </main>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const params = new URLSearchParams(window.location.search);
+        const setIfEmpty = (id, val) => {
+          const el = document.getElementById(id);
+          if (el && !el.value) el.value = val || "";
+        };
+        setIfEmpty("utm_source", params.get("utm_source"));
+        setIfEmpty("utm_medium", params.get("utm_medium"));
+        setIfEmpty("utm_campaign", params.get("utm_campaign"));
+        setIfEmpty("referrer", document.referrer || "");
+
+        let serverErrors = {};
+        try { serverErrors = <%- JSON.stringify(errors || {}) %>; } catch { serverErrors = {}; }
+
+        const sections = Array.from(document.querySelectorAll(".step-section"));
+        const totalSteps = Math.max(sections.length, 1);
+
+        const modeStepBtn = document.getElementById("modeStep");
+        const modeSingleBtn = document.getElementById("modeSingle");
+
+        const wizardNav = document.getElementById("wizardNav");
+        const singleSubmit = document.getElementById("singleSubmit");
+        const wizardProgress = document.getElementById("wizardProgress");
+        const progressBar = document.getElementById("progressBar");
+        const progressText = document.getElementById("progressText");
+        const btnBack = document.getElementById("btnBack");
+        const btnNext = document.getElementById("btnNext");
+        const btnSubmitWizard = document.getElementById("btnSubmitWizard");
+
+        if (!wizardNav || !singleSubmit || sections.length === 0) {
+          if (singleSubmit) singleSubmit.classList.remove("hidden");
+          return;
+        }
+
+        const STORAGE_MODE = "nr_survey_mode_" + "<%= form.slug %>";
+        const STORAGE_STEP = "nr_survey_step_" + "<%= form.slug %>";
+
+        function scrollToActiveStep(activeEl, behavior = "smooth") {
+          if (!activeEl) return;
+          const offset = 16;
+          requestAnimationFrame(() => {
+            const y = activeEl.getBoundingClientRect().top + window.scrollY - offset;
+            window.scrollTo({ top: Math.max(0, y), behavior });
+          });
+        }
+
+        function hasAnyErrors() {
+          return serverErrors && Object.keys(serverErrors).length > 0;
+        }
+
+        function setActiveButton(mode) {
+          const active = ["border-primary/50", "ring-4", "ring-primary/10", "text-primary"];
+          const inactive = ["border-neutral-300", "text-neutral-900", "ring-0"];
+
+          const apply = (btn, isActive) => {
+            if (!btn) return;
+            btn.classList.remove(...active, ...inactive);
+            btn.classList.add(...(isActive ? active : inactive));
+          };
+
+          apply(modeStepBtn, mode === "wizard");
+          apply(modeSingleBtn, mode === "single");
+        }
+
+        function updateProgress(step) {
+          const pct = Math.round((step / totalSteps) * 100);
+          if (progressBar) progressBar.style.width = pct + "%";
+          if (progressText) progressText.textContent = "Step " + step + " of " + totalSteps;
+        }
+
+        function showWizard(step, opts = { scroll: true, behavior: "smooth" }) {
+          sections.forEach((s) => (s.style.display = "none"));
+          const active = sections.find((s) => Number(s.dataset.step) === step);
+          if (active) active.style.display = "block";
+        
+          document.querySelectorAll(".step-badge").forEach((b) => b.classList.remove("hidden"));
+        
+          wizardNav.classList.remove("hidden");
+          wizardProgress.classList.remove("hidden");
+          singleSubmit.classList.add("hidden");
+        
+          if (btnBack) {
+            btnBack.disabled = step === 1;
+            btnBack.classList.toggle("opacity-50", step === 1);
+            btnBack.classList.toggle("cursor-not-allowed", step === 1);
+          }
+      
+          const isLast = step === totalSteps;
+          if (btnNext) btnNext.classList.toggle("hidden", isLast);
+          if (btnSubmitWizard) btnSubmitWizard.classList.toggle("hidden", !isLast);
+      
+          updateProgress(step);
+          localStorage.setItem(STORAGE_STEP, String(step));
+          localStorage.setItem(STORAGE_MODE, "wizard");
+          setActiveButton("wizard");
+      
+          if (opts?.scroll) scrollToActiveStep(active, opts.behavior || "smooth");
+        }
+
+        function showSingle() {
+          sections.forEach((s) => (s.style.display = "block"));
+          document.querySelectorAll(".step-badge").forEach((b) => b.classList.add("hidden"));
+
+          wizardNav.classList.add("hidden");
+          wizardProgress.classList.add("hidden");
+          singleSubmit.classList.remove("hidden");
+
+          localStorage.setItem(STORAGE_MODE, "single");
+          setActiveButton("single");
+        }
+
+        modeStepBtn?.addEventListener("click", () => showWizard(1));
+        modeSingleBtn?.addEventListener("click", () => showSingle());
+
+        btnBack?.addEventListener("click", () => {
+          const cur = Number(localStorage.getItem(STORAGE_STEP) || "1");
+          showWizard(Math.max(1, cur - 1));
+        });
+
+        btnNext?.addEventListener("click", () => {
+          const cur = Number(localStorage.getItem(STORAGE_STEP) || "1");
+          showWizard(Math.min(totalSteps, cur + 1));
+        });
+
+        (function init() {
+          if (hasAnyErrors()) {
+            showSingle();
+            return;
+          }
+          const savedMode = localStorage.getItem(STORAGE_MODE) || "wizard";
+          if (savedMode === "single") {
+            showSingle();
+          } else {
+            const savedStep = Number(localStorage.getItem(STORAGE_STEP) || "1");
+            const step = Math.min(Math.max(savedStep, 1), totalSteps);
+            showWizard(step);
+          }
+        })();
+      });
+    </script>
+  </body>
+</html>

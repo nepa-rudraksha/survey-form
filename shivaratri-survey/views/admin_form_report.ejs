@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><%= form.title %> — Report</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: { colors: { primary: "#C19A5B" } } } };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body class="min-h-screen bg-neutral-50 text-neutral-900">
+  <header class="border-b border-neutral-200 bg-white">
+    <div class="mx-auto max-w-7xl px-4 py-6">
+      <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <div class="text-sm font-semibold tracking-wide text-neutral-600">Nepa Rudraksha</div>
+          <h1 class="mt-1 text-2xl font-semibold"><%= form.title %> — Analytics Report</h1>
+          <p class="mt-1 text-sm text-neutral-600">Response analytics and insights</p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <a href="/admin/forms/<%= form.id %>/responses" class="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50">
+            View Responses
+          </a>
+          <a href="/admin/forms" class="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50">
+            Back to Forms
+          </a>
+          <form method="GET" action="/admin/forms/<%= form.id %>/report" class="flex items-center gap-2">
+            <label class="text-sm text-neutral-600">Trend range</label>
+            <select name="days" class="rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm">
+              <% [30,60,90,180,365].forEach(function(n){ %>
+                <option value="<%= n %>" <%= (String(days) === String(n)) ? 'selected' : '' %>><%= n %> days</option>
+              <% }) %>
+            </select>
+            <button class="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-95" type="submit">
+              Apply
+            </button>
+          </form>
+          <form method="POST" action="/admin/logout">
+            <button type="submit" class="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
+              Logout
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- KPI cards -->
+      <div class="mt-6 grid gap-3 md:grid-cols-3">
+        <div class="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+          <div class="text-xs font-semibold text-neutral-600">Total responses</div>
+          <div class="mt-2 text-3xl font-semibold"><%= kpis.total %></div>
+          <div class="mt-1 text-sm text-neutral-600">Last 7 days: <span class="font-semibold text-neutral-900"><%= kpis.last_7_days %></span> (<%= kpis.last_7_days_pct %>%)</div>
+          <div class="text-sm text-neutral-600">Last 30 days: <span class="font-semibold text-neutral-900"><%= kpis.last_30_days %></span> (<%= kpis.last_30_days_pct %>%)</div>
+        </div>
+
+        <div class="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+          <div class="text-xs font-semibold text-neutral-600">Response rate</div>
+          <div class="mt-2 text-3xl font-semibold text-primary"><%= kpis.total > 0 ? Math.round((kpis.last_7_days / kpis.total) * 100) : 0 %>%</div>
+          <div class="mt-1 text-sm text-neutral-600">Last 7 days growth</div>
+        </div>
+
+        <div class="rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm">
+          <div class="text-xs font-semibold text-neutral-600">Trend window</div>
+          <div class="mt-2 text-3xl font-semibold"><%= days %> days</div>
+          <div class="mt-1 text-sm text-neutral-600">Daily submissions chart range</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-7xl px-4 py-8 space-y-6">
+    <!-- Daily trend -->
+    <div class="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
+      <h2 class="text-lg font-semibold mb-4">Daily Submissions Trend</h2>
+      <canvas id="dailyChart" height="60"></canvas>
+    </div>
+
+    <!-- Field Statistics -->
+    <% Object.keys(fieldStats).forEach(function(fieldKey) { 
+         const stats = fieldStats[fieldKey];
+         const field = fields.find(f => f.field_key === fieldKey);
+         if (!field || !stats || stats.length === 0) return;
+    %>
+      <div class="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
+        <h2 class="text-lg font-semibold mb-4"><%= field.label %></h2>
+        <div class="grid gap-4 md:grid-cols-2">
+          <div>
+            <canvas id="chart_<%= fieldKey %>" height="200"></canvas>
+          </div>
+          <div class="space-y-2">
+            <% stats.forEach(function(stat, idx) { %>
+              <div class="flex items-center justify-between rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+                <div class="flex-1">
+                  <div class="text-sm font-semibold text-neutral-900"><%= stat.label %></div>
+                  <div class="text-xs text-neutral-600 mt-1"><%= stat.count %> responses</div>
+                </div>
+                <div class="text-right">
+                  <div class="text-lg font-bold text-primary"><%= kpis.total > 0 ? Math.round((stat.count / kpis.total) * 100) : 0 %>%</div>
+                </div>
+              </div>
+            <% }); %>
+          </div>
+        </div>
+      </div>
+    <% }); %>
+
+    <% if (Object.keys(fieldStats).length === 0) { %>
+      <div class="rounded-2xl border-2 border-dashed border-neutral-200 bg-neutral-50 p-12 text-center">
+        <p class="text-neutral-600">No field statistics available. This form may not have dropdown, radio, or checkbox fields.</p>
+      </div>
+    <% } %>
+  </main>
+
+  <script>
+    // Daily trend chart
+    const dailyData = <%- JSON.stringify(daily) %>;
+    new Chart(document.getElementById('dailyChart'), {
+      type: 'line',
+      data: {
+        labels: dailyData.map(d => d.date),
+        datasets: [{
+          label: 'Submissions',
+          data: dailyData.map(d => d.count),
+          borderColor: '#C19A5B',
+          backgroundColor: 'rgba(193, 154, 91, 0.1)',
+          tension: 0.4,
+          fill: true
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          legend: { display: false }
+        },
+        scales: {
+          y: { beginAtZero: true, ticks: { stepSize: 1 } }
+        }
+      }
+    });
+
+    // Field statistics charts
+    <% Object.keys(fieldStats).forEach(function(fieldKey) { 
+         const stats = fieldStats[fieldKey];
+         if (!stats || stats.length === 0) return;
+    %>
+      const data_<%= fieldKey.replace(/[^a-zA-Z0-9]/g, '_') %> = <%- JSON.stringify(stats) %>;
+      new Chart(document.getElementById('chart_<%= fieldKey %>'), {
+        type: 'doughnut',
+        data: {
+          labels: data_<%= fieldKey.replace(/[^a-zA-Z0-9]/g, '_') %>.map(s => s.label),
+          datasets: [{
+            data: data_<%= fieldKey.replace(/[^a-zA-Z0-9]/g, '_') %>.map(s => s.count),
+            backgroundColor: [
+              '#C19A5B',
+              '#D4AF7A',
+              '#E8C49A',
+              '#F5D9BA',
+              '#F9E8D3',
+              '#FCF3E8'
+            ]
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: true,
+          plugins: {
+            legend: { position: 'bottom' }
+          }
+        }
+      });
+    <% }); %>
+  </script>
+</body>
+</html>

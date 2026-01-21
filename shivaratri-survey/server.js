@@ -63,6 +63,8 @@ const submitLimiter = rateLimit({
 
 app.post("/submit", submitLimiter);
 app.post("/update/:key", submitLimiter);
+app.post("/forms/:slug/submit", submitLimiter);
+app.post("/forms/:slug/update/:key", submitLimiter);
 
 // -------------------- Helpers --------------------
 function normalizeMobile(raw) {
@@ -198,6 +200,207 @@ function parseEventInterests(v) {
   }
 }
 
+// -------------------- Dynamic Form Helpers --------------------
+function generateSlug(text) {
+  return String(text || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/[\s_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+async function getFormBySlug(slug) {
+  const [rows] = await pool.execute(
+    "SELECT * FROM forms WHERE slug = ? AND status = 'published' LIMIT 1",
+    [slug]
+  );
+  return rows[0] || null;
+}
+
+async function getFormFields(formId) {
+  const [rows] = await pool.execute(
+    "SELECT * FROM form_fields WHERE form_id = ? ORDER BY section_id ASC, display_order ASC",
+    [formId]
+  );
+  return rows;
+}
+
+async function getFormSections(formId) {
+  const [rows] = await pool.execute(
+    "SELECT * FROM form_sections WHERE form_id = ? ORDER BY display_order ASC",
+    [formId]
+  );
+  return rows;
+}
+
+async function getFormFieldsBySection(formId) {
+  const sections = await getFormSections(formId);
+  const fields = await getFormFields(formId);
+  
+  // Group fields by section
+  const fieldsBySection = {};
+  const fieldsWithoutSection = [];
+  
+  for (const field of fields) {
+    if (field.section_id) {
+      if (!fieldsBySection[field.section_id]) {
+        fieldsBySection[field.section_id] = [];
+      }
+      fieldsBySection[field.section_id].push(field);
+    } else {
+      fieldsWithoutSection.push(field);
+    }
+  }
+  
+  return { sections, fieldsBySection, fieldsWithoutSection };
+}
+
+async function validateDynamicForm(body, fields) {
+  const errors = {};
+  const values = { ...body };
+
+  for (const field of fields) {
+    const fieldKey = field.field_key;
+    let value = body[fieldKey];
+
+    // Handle checkbox arrays
+    if (field.field_type === "checkbox") {
+      value = asArray(value);
+      values[fieldKey] = value;
+    } else if (field.field_type === "phone") {
+      value = normalizeMobile(value);
+      values[fieldKey] = value;
+    } else {
+      value = String(value || "").trim();
+      values[fieldKey] = value;
+    }
+
+    // Required validation
+    if (field.required) {
+      if (field.field_type === "checkbox") {
+        if (!value || value.length === 0) {
+          errors[fieldKey] = `${field.label} is required.`;
+        }
+      } else {
+        if (!value || value.length === 0) {
+          errors[fieldKey] = `${field.label} is required.`;
+        }
+      }
+    }
+
+    // Type-specific validation
+    if (value && value.length > 0) {
+      if (field.field_type === "email") {
+        const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+        if (!ok) errors[fieldKey] = "Please enter a valid email address.";
+      } else if (field.field_type === "number") {
+        if (isNaN(value)) errors[fieldKey] = "Please enter a valid number.";
+      } else if (field.field_type === "date") {
+        if (isNaN(Date.parse(value))) errors[fieldKey] = "Please enter a valid date.";
+      }
+    }
+  }
+
+  return { errors, values };
+}
+
+function parseFieldOptions(options) {
+  try {
+    if (!options) return [];
+    const parsed = typeof options === "string" ? JSON.parse(options) : options;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+// Get table name for form responses
+function getFormResponseTableName(formId) {
+  return `form_responses_${formId}`;
+}
+
+// Get response table name (alias for consistency)
+function getResponseTableName(formId) {
+  return getFormResponseTableName(formId);
+}
+
+// Create response table for a form
+async function createFormResponseTable(formId, fields) {
+  const tableName = getFormResponseTableName(formId);
+  
+  // Default columns that are always included
+  let sql = `CREATE TABLE IF NOT EXISTS \`${tableName}\` (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    edit_key VARCHAR(64) NOT NULL UNIQUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    utm_source VARCHAR(120) NULL,
+    utm_medium VARCHAR(120) NULL,
+    utm_campaign VARCHAR(120) NULL,
+    referrer VARCHAR(255) NULL,
+    ip_address VARCHAR(45) NULL,
+    user_agent VARCHAR(255) NULL`;
+
+  // Add columns for each field
+  for (const field of fields) {
+    const fieldKey = field.field_key;
+    let columnDef = "";
+
+    switch (field.field_type) {
+      case "text":
+      case "phone":
+      case "email":
+        columnDef = `\`${fieldKey}\` VARCHAR(255) NULL`;
+        break;
+      case "textarea":
+        columnDef = `\`${fieldKey}\` TEXT NULL`;
+        break;
+      case "number":
+        columnDef = `\`${fieldKey}\` DECIMAL(20, 2) NULL`;
+        break;
+      case "date":
+        columnDef = `\`${fieldKey}\` DATE NULL`;
+        break;
+      case "dropdown":
+      case "radio":
+        // For single select, store as VARCHAR
+        columnDef = `\`${fieldKey}\` VARCHAR(255) NULL`;
+        break;
+      case "checkbox":
+        // For multi-select, store as JSON array
+        columnDef = `\`${fieldKey}\` JSON NULL`;
+        break;
+      case "consent":
+        columnDef = `\`${fieldKey}\` TINYINT(1) NULL DEFAULT 0`;
+        break;
+      default:
+        columnDef = `\`${fieldKey}\` VARCHAR(255) NULL`;
+    }
+
+    sql += `,\n    ${columnDef}`;
+  }
+
+  // Add indexes at the end
+  sql += `,\n    INDEX idx_edit_key (edit_key),
+    INDEX idx_created_at (created_at)
+  )`;
+
+  await pool.query(sql);
+  console.log(`Created response table: ${tableName}`);
+}
+
+// Drop form response table
+async function dropFormResponseTable(formId) {
+  const tableName = getFormResponseTableName(formId);
+  try {
+    await pool.query(`DROP TABLE IF EXISTS \`${tableName}\``);
+    console.log(`Dropped response table: ${tableName}`);
+  } catch (e) {
+    console.error(`Error dropping table ${tableName}:`, e);
+  }
+}
+
 // -------------------- Validation --------------------
 function validate(body) {
   const errors = {};
@@ -240,12 +443,258 @@ function validate(body) {
 }
 
 // -------------------- Routes --------------------
-app.get("/", (req, res) => {
-  res.render("survey", {
+// Homepage: Show forms with show_on_homepage = true
+app.get("/", async (req, res) => {
+  try {
+    const [forms] = await pool.execute(
+      "SELECT * FROM forms WHERE show_on_homepage = 1 AND status = 'published' ORDER BY created_at DESC"
+    );
+    res.render("homepage", { forms });
+  } catch (e) {
+    console.error(e);
+    res.render("homepage", { forms: [] });
+  }
+});
+
+// Legacy route: Keep for backward compatibility (redirects to form if exists)
+app.get("/survey", async (req, res) => {
+  // Try to find a form with slug 'maha-shivaratri-2026' or redirect to homepage
+  const form = await getFormBySlug("maha-shivaratri-2026");
+  if (form) {
+    return res.redirect(`/forms/${form.slug}`);
+  }
+  res.redirect("/");
+});
+
+// Dynamic form route
+app.get("/forms/:slug", async (req, res) => {
+  const slug = String(req.params.slug || "").trim();
+  if (!slug) return res.status(404).render("404");
+
+  const form = await getFormBySlug(slug);
+  if (!form) {
+    return res.status(404).render("form_not_found", { slug });
+  }
+
+  const { sections, fieldsBySection, fieldsWithoutSection } = await getFormFieldsBySection(form.id);
+
+  res.render("dynamic_form", {
+    form,
+    sections,
+    fieldsBySection,
+    fieldsWithoutSection,
     errors: {},
-    values: { wants_updates: "on" },
+    values: {},
     pageMode: "new",
     editKey: null,
+  });
+});
+
+// Edit existing dynamic form response
+app.get("/forms/:slug/edit/:key", async (req, res) => {
+  const slug = String(req.params.slug || "").trim();
+  const key = String(req.params.key || "").trim();
+  if (!slug || !key) return res.status(404).send("Not found");
+
+  const form = await getFormBySlug(slug);
+  if (!form) return res.status(404).send("Form not found");
+
+  const tableName = getFormResponseTableName(form.id);
+  const [rows] = await pool.execute(
+    `SELECT * FROM \`${tableName}\` WHERE edit_key = ? LIMIT 1`,
+    [key]
+  );
+  if (!rows.length) return res.status(404).send("Not found");
+
+  const row = rows[0];
+  const { sections, fieldsBySection, fieldsWithoutSection } = await getFormFieldsBySection(form.id);
+  
+  // Extract values from row (excluding default columns)
+  const defaultColumns = ["id", "edit_key", "created_at", "updated_at", "utm_source", "utm_medium", "utm_campaign", "referrer", "ip_address", "user_agent"];
+  const values = {};
+  const allFields = [...Object.values(fieldsBySection).flat(), ...fieldsWithoutSection];
+  for (const field of allFields) {
+    const value = row[field.field_key];
+    if (field.field_type === "checkbox" && value) {
+      try {
+        values[field.field_key] = typeof value === "string" ? JSON.parse(value) : value;
+      } catch {
+        values[field.field_key] = [];
+      }
+    } else {
+      values[field.field_key] = value || "";
+    }
+  }
+
+  res.render("dynamic_form", {
+    form,
+    sections,
+    fieldsBySection,
+    fieldsWithoutSection,
+    errors: {},
+    values,
+    pageMode: "edit",
+    editKey: row.edit_key,
+  });
+});
+
+// Submit new dynamic form
+app.post("/forms/:slug/submit", async (req, res) => {
+  const slug = String(req.params.slug || "").trim();
+  if (!slug) return res.status(404).send("Form not found");
+
+  const form = await getFormBySlug(slug);
+  if (!form) return res.status(404).send("Form not found");
+
+  const { sections, fieldsBySection, fieldsWithoutSection } = await getFormFieldsBySection(form.id);
+  const allFields = [...Object.values(fieldsBySection).flat(), ...fieldsWithoutSection];
+  const { errors, values } = await validateDynamicForm(req.body, allFields);
+
+  if (Object.keys(errors).length) {
+    return res.status(422).render("dynamic_form", {
+      form,
+      sections,
+      fieldsBySection,
+      fieldsWithoutSection,
+      errors,
+      values,
+      pageMode: "new",
+      editKey: null,
+    });
+  }
+
+  const editKey = makeEditKey();
+  const ip = getClientIp(req);
+  const ua = String(req.headers["user-agent"] || "").slice(0, 255);
+
+  const utm_source = (req.body.utm_source || "").slice(0, 120) || null;
+  const utm_medium = (req.body.utm_medium || "").slice(0, 120) || null;
+  const utm_campaign = (req.body.utm_campaign || "").slice(0, 120) || null;
+  const referrer = (req.body.referrer || "").slice(0, 255) || null;
+
+  // Insert into form-specific table
+  const tableName = getFormResponseTableName(form.id);
+  
+  // Check if table exists, create if not
+  try {
+    const [tableCheck] = await pool.query(
+      `SELECT COUNT(*) as count FROM information_schema.tables 
+       WHERE table_schema = DATABASE() AND table_name = ?`,
+      [tableName]
+    );
+    
+    if (tableCheck[0].count === 0) {
+      // Table doesn't exist, create it
+      console.log(`Creating missing table: ${tableName}`);
+      await createFormResponseTable(form.id, allFields);
+    }
+  } catch (e) {
+    console.error("Error checking table:", e);
+  }
+  
+  // Build column names and values
+  const columns = ["edit_key", "utm_source", "utm_medium", "utm_campaign", "referrer", "ip_address", "user_agent"];
+  const columnValues = [editKey, utm_source, utm_medium, utm_campaign, referrer, ip || null, ua || null];
+  
+  // Add form field columns
+  for (const field of allFields) {
+    const value = values[field.field_key];
+    columns.push(`\`${field.field_key}\``);
+    
+    if (field.field_type === "checkbox") {
+      // Store checkbox as JSON array
+      columnValues.push(JSON.stringify(Array.isArray(value) ? value : []));
+    } else {
+      columnValues.push(value || null);
+    }
+  }
+
+  const placeholders = columns.map(() => "?").join(", ");
+  const sql = `INSERT INTO \`${tableName}\` (${columns.join(", ")}) VALUES (${placeholders})`;
+
+  try {
+    await pool.execute(sql, columnValues);
+  } catch (e) {
+    console.error("Error inserting response:", e);
+    return res.status(500).send("Server error");
+  }
+
+  return res.render("success", {
+    editUrl: `/forms/${form.slug}/edit/${editKey}`,
+    mobile_number: values.mobile_number || values.phone || "",
+  });
+});
+
+// Update existing dynamic form response
+app.post("/forms/:slug/update/:key", async (req, res) => {
+  const slug = String(req.params.slug || "").trim();
+  const key = String(req.params.key || "").trim();
+  if (!slug || !key) return res.status(404).send("Not found");
+
+  const form = await getFormBySlug(slug);
+  if (!form) return res.status(404).send("Form not found");
+
+  const tableName = getFormResponseTableName(form.id);
+  const [rows] = await pool.execute(
+    `SELECT id FROM \`${tableName}\` WHERE edit_key = ? LIMIT 1`,
+    [key]
+  );
+  if (!rows.length) return res.status(404).send("Not found");
+
+  const { sections, fieldsBySection, fieldsWithoutSection } = await getFormFieldsBySection(form.id);
+  const allFields = [...Object.values(fieldsBySection).flat(), ...fieldsWithoutSection];
+  const { errors, values } = await validateDynamicForm(req.body, allFields);
+
+  if (Object.keys(errors).length) {
+    return res.status(422).render("dynamic_form", {
+      form,
+      sections,
+      fieldsBySection,
+      fieldsWithoutSection,
+      errors,
+      values,
+      pageMode: "edit",
+      editKey: key,
+    });
+  }
+
+  const ip = getClientIp(req);
+  const ua = String(req.headers["user-agent"] || "").slice(0, 255);
+
+  const utm_source = (req.body.utm_source || "").slice(0, 120) || null;
+  const utm_medium = (req.body.utm_medium || "").slice(0, 120) || null;
+  const utm_campaign = (req.body.utm_campaign || "").slice(0, 120) || null;
+  const referrer = (req.body.referrer || "").slice(0, 255) || null;
+
+  // Build UPDATE statement
+  const updateColumns = ["utm_source", "utm_medium", "utm_campaign", "referrer", "ip_address", "user_agent"];
+  const updateValues = [utm_source, utm_medium, utm_campaign, referrer, ip || null, ua || null];
+  
+  for (const field of allFields) {
+    const value = values[field.field_key];
+    updateColumns.push(`\`${field.field_key}\``);
+    if (field.field_type === "checkbox") {
+      updateValues.push(JSON.stringify(Array.isArray(value) ? value : []));
+    } else {
+      updateValues.push(value || null);
+    }
+  }
+
+  updateValues.push(key); // for WHERE clause
+
+  const setClause = updateColumns.map(col => `${col} = ?`).join(", ");
+  const sql = `UPDATE \`${tableName}\` SET ${setClause} WHERE edit_key = ?`;
+
+  try {
+    await pool.execute(sql, updateValues);
+  } catch (e) {
+    console.error("Error updating response:", e);
+    return res.status(500).send("Server error");
+  }
+
+  return res.render("success", {
+    editUrl: `/forms/${form.slug}/edit/${key}`,
+    mobile_number: values.mobile_number || values.phone || "",
   });
 });
 
@@ -487,7 +936,7 @@ app.post("/admin/login", (req, res) => {
 
   if (safeEq(u, adminUser) && safeEq(p, adminPass)) {
     req.session.isAdmin = true;
-    return res.redirect("/admin/responses");
+    return res.redirect("/admin");
   }
 
   return res.status(401).render("admin_login", { error: "Invalid username or password." });
@@ -496,6 +945,559 @@ app.post("/admin/login", (req, res) => {
 app.post("/admin/logout", (req, res) => {
   req.session = null;
   res.redirect("/admin/login");
+});
+
+// Admin Dashboard
+app.get("/admin", requireAdmin, async (req, res) => {
+  try {
+    // Get stats
+    const [forms] = await pool.execute("SELECT * FROM forms ORDER BY created_at DESC");
+    const totalForms = forms.length;
+    const publishedForms = forms.filter(f => f.status === 'published').length;
+    const draftForms = forms.filter(f => f.status === 'draft').length;
+
+    // Get total responses across all forms
+    let totalResponses = 0;
+    let last7Days = 0;
+    
+    for (const form of forms) {
+      const tableName = getFormResponseTableName(form.id);
+      try {
+        const [countRows] = await pool.query(`SELECT COUNT(*) as count FROM \`${tableName}\``);
+        const [recentRows] = await pool.query(
+          `SELECT COUNT(*) as count FROM \`${tableName}\` WHERE created_at >= (NOW() - INTERVAL 7 DAY)`
+        );
+        totalResponses += countRows[0]?.count || 0;
+        last7Days += recentRows[0]?.count || 0;
+      } catch (e) {
+        // Table doesn't exist yet
+      }
+    }
+
+    // Also count legacy survey_responses
+    try {
+      const [legacyCount] = await pool.query("SELECT COUNT(*) as count FROM survey_responses");
+      const [legacyRecent] = await pool.query(
+        "SELECT COUNT(*) as count FROM survey_responses WHERE created_at >= (NOW() - INTERVAL 7 DAY)"
+      );
+      totalResponses += legacyCount[0]?.count || 0;
+      last7Days += legacyRecent[0]?.count || 0;
+    } catch (e) {
+      // Table might not exist
+    }
+
+    // Get response counts for each form
+    const formsWithCounts = await Promise.all(forms.map(async (form) => {
+      const tableName = getFormResponseTableName(form.id);
+      try {
+        const [countRows] = await pool.query(`SELECT COUNT(*) as count FROM \`${tableName}\``);
+        form.response_count = countRows[0]?.count || 0;
+      } catch (e) {
+        form.response_count = 0;
+      }
+      return form;
+    }));
+
+    res.render("admin_dashboard", {
+      stats: {
+        totalForms,
+        publishedForms,
+        draftForms,
+        totalResponses,
+        last7Days,
+      },
+      recentForms: formsWithCounts,
+    });
+  } catch (e) {
+    console.error("Error loading dashboard:", e);
+    res.status(500).send("Server error");
+  }
+});
+
+// -------------------- Admin: Form Management --------------------
+// List all forms
+app.get("/admin/forms", requireAdmin, async (req, res) => {
+  try {
+    const [forms] = await pool.execute(
+      "SELECT * FROM forms ORDER BY created_at DESC"
+    );
+    
+    // Get response count for each form from their specific tables
+    for (const form of forms) {
+      const tableName = getFormResponseTableName(form.id);
+      try {
+        const [countRows] = await pool.execute(
+          `SELECT COUNT(*) as count FROM \`${tableName}\``
+        );
+        form.response_count = countRows[0]?.count || 0;
+      } catch (e) {
+        // Table doesn't exist yet
+        form.response_count = 0;
+      }
+    }
+    
+    console.log(`Found ${forms.length} forms in database`);
+    res.render("admin_forms_list", { forms });
+  } catch (e) {
+    console.error("Error fetching forms:", e);
+    res.render("admin_forms_list", { forms: [] });
+  }
+});
+
+// Create new form
+app.get("/admin/forms/new", requireAdmin, (req, res) => {
+  res.render("admin_form_edit", {
+    form: null,
+    sections: [],
+    fieldsBySection: {},
+    fieldsWithoutSection: [],
+    mode: "create",
+  });
+});
+
+// Edit form
+app.get("/admin/forms/:id/edit", requireAdmin, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) return res.status(404).send("Not found");
+
+  try {
+    const [forms] = await pool.execute("SELECT * FROM forms WHERE id = ? LIMIT 1", [id]);
+    if (!forms.length) return res.status(404).send("Form not found");
+
+    const form = forms[0];
+    const { sections, fieldsBySection, fieldsWithoutSection } = await getFormFieldsBySection(id);
+
+    res.render("admin_form_edit", {
+      form,
+      sections,
+      fieldsBySection,
+      fieldsWithoutSection,
+      mode: "edit",
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).send("Server error");
+  }
+});
+
+// Save form (create or update)
+app.post("/admin/forms/save", requireAdmin, async (req, res) => {
+  const formId = req.body.form_id && req.body.form_id !== "" ? parseInt(req.body.form_id, 10) : null;
+  const title = String(req.body.title || "").trim();
+  const description = String(req.body.description || "").trim();
+  const slug = String(req.body.slug || "").trim() || generateSlug(title);
+  const showOnHomepage = req.body.show_on_homepage === "on" ? 1 : 0;
+  const status = String(req.body.status || "draft");
+
+  if (!title) {
+    return res.status(400).json({ error: "Title is required" });
+  }
+
+  try {
+    let form;
+    if (formId && Number.isFinite(formId)) {
+      // Update existing
+      await pool.execute(
+        "UPDATE forms SET title = ?, description = ?, slug = ?, show_on_homepage = ?, status = ? WHERE id = ?",
+        [title, description, slug, showOnHomepage, status, formId]
+      );
+      form = { id: formId };
+    } else {
+      // Create new
+      const [result] = await pool.execute(
+        "INSERT INTO forms (title, description, slug, show_on_homepage, status) VALUES (?, ?, ?, ?, ?)",
+        [title, description, slug, showOnHomepage, status]
+      );
+      form = { id: result.insertId };
+    }
+
+    // Save fields
+    let fieldsData = [];
+    try {
+      fieldsData = typeof req.body.fields === "string" ? JSON.parse(req.body.fields) : (req.body.fields || []);
+    } catch (e) {
+      console.error("Error parsing fields:", e);
+      fieldsData = [];
+    }
+    
+    // Save sections first
+    let sectionsData = [];
+    try {
+      sectionsData = typeof req.body.sections === "string" ? JSON.parse(req.body.sections) : (req.body.sections || []);
+    } catch (e) {
+      console.error("Error parsing sections:", e);
+      sectionsData = [];
+    }
+    
+    // Deduplicate sections by temp_id (in case of duplicates)
+    const seenTempIds = new Set();
+    sectionsData = sectionsData.filter(section => {
+      if (!section.temp_id) return true; // Keep sections without temp_id
+      if (seenTempIds.has(section.temp_id)) {
+        console.warn(`Duplicate section temp_id detected: ${section.temp_id}, skipping`);
+        return false;
+      }
+      seenTempIds.add(section.temp_id);
+      return true;
+    });
+    
+    // Delete existing sections and fields
+    await pool.execute("DELETE FROM form_fields WHERE form_id = ?", [form.id]);
+    await pool.execute("DELETE FROM form_sections WHERE form_id = ?", [form.id]);
+
+    // Insert sections
+    const sectionMap = {}; // Maps temp section IDs to real IDs
+    for (let i = 0; i < sectionsData.length; i++) {
+      const section = sectionsData[i];
+      const sectionTitle = String(section.title || "").trim() || `Section ${i + 1}`;
+      const sectionDescription = section.description ? String(section.description).trim() : null;
+      
+      const [sectionResult] = await pool.execute(
+        `INSERT INTO form_sections (form_id, title, description, display_order)
+         VALUES (?, ?, ?, ?)`,
+        [
+          form.id,
+          sectionTitle,
+          sectionDescription,
+          i,
+        ]
+      );
+      // Map temp ID to real ID
+      if (section.temp_id) {
+        sectionMap[section.temp_id] = sectionResult.insertId;
+      }
+    }
+
+    // Insert fields
+    const savedFields = [];
+    for (let i = 0; i < fieldsData.length; i++) {
+      const field = fieldsData[i];
+      const sectionId = field.section_id && sectionMap[field.section_id] ? sectionMap[field.section_id] : null;
+      
+      await pool.execute(
+        `INSERT INTO form_fields (form_id, section_id, field_key, field_type, label, placeholder, required, options, validation_rules, display_order)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          form.id,
+          sectionId,
+          field.field_key || `field_${i}`,
+          field.field_type || "text",
+          field.label || "",
+          field.placeholder || null,
+          field.required ? 1 : 0,
+          field.options ? JSON.stringify(field.options) : null,
+          field.validation_rules ? JSON.stringify(field.validation_rules) : null,
+          i,
+        ]
+      );
+      savedFields.push({
+        ...field,
+        field_key: field.field_key || `field_${i}`,
+        field_type: field.field_type || "text",
+      });
+    }
+
+    // Create or recreate the response table for this form
+    if (!formId || !Number.isFinite(formId)) {
+      // New form - create table
+      await createFormResponseTable(form.id, savedFields);
+    } else {
+      // Existing form - check if table exists, if fields changed, recreate it
+      const tableName = getFormResponseTableName(form.id);
+      const [existingTable] = await pool.query(
+        `SELECT COUNT(*) as count FROM information_schema.tables 
+         WHERE table_schema = DATABASE() AND table_name = ?`,
+        [tableName]
+      );
+      
+      if (existingTable[0].count === 0) {
+        // Table doesn't exist, create it
+        await createFormResponseTable(form.id, savedFields);
+      } else {
+        // Table exists - check if we need to add new columns
+        const [existingColumns] = await pool.query(
+          `SELECT COLUMN_NAME FROM information_schema.columns 
+           WHERE table_schema = DATABASE() AND table_name = ?`,
+          [tableName]
+        );
+        const existingColumnNames = new Set(existingColumns.map(c => c.COLUMN_NAME));
+        
+        // Add missing columns
+        for (const field of savedFields) {
+          if (!existingColumnNames.has(field.field_key)) {
+            let alterSql = "";
+            switch (field.field_type) {
+              case "text":
+              case "phone":
+              case "email":
+                alterSql = `ALTER TABLE \`${tableName}\` ADD COLUMN \`${field.field_key}\` VARCHAR(255) NULL`;
+                break;
+              case "textarea":
+                alterSql = `ALTER TABLE \`${tableName}\` ADD COLUMN \`${field.field_key}\` TEXT NULL`;
+                break;
+              case "number":
+                alterSql = `ALTER TABLE \`${tableName}\` ADD COLUMN \`${field.field_key}\` DECIMAL(20, 2) NULL`;
+                break;
+              case "date":
+                alterSql = `ALTER TABLE \`${tableName}\` ADD COLUMN \`${field.field_key}\` DATE NULL`;
+                break;
+              case "dropdown":
+              case "radio":
+                alterSql = `ALTER TABLE \`${tableName}\` ADD COLUMN \`${field.field_key}\` VARCHAR(255) NULL`;
+                break;
+              case "checkbox":
+                alterSql = `ALTER TABLE \`${tableName}\` ADD COLUMN \`${field.field_key}\` JSON NULL`;
+                break;
+              case "consent":
+                alterSql = `ALTER TABLE \`${tableName}\` ADD COLUMN \`${field.field_key}\` TINYINT(1) NULL DEFAULT 0`;
+                break;
+              default:
+                alterSql = `ALTER TABLE \`${tableName}\` ADD COLUMN \`${field.field_key}\` VARCHAR(255) NULL`;
+            }
+            try {
+              await pool.query(alterSql);
+              console.log(`Added column ${field.field_key} to ${tableName}`);
+            } catch (e) {
+              console.error(`Error adding column ${field.field_key}:`, e.message);
+            }
+          }
+        }
+      }
+    }
+
+    res.json({ success: true, form_id: form.id });
+  } catch (e) {
+    console.error(e);
+    if (e.code === "ER_DUP_ENTRY") {
+      res.status(400).json({ error: "Slug already exists. Please choose a different one." });
+    } else {
+      res.status(500).json({ error: "Server error: " + e.message });
+    }
+  }
+});
+
+// Delete form
+app.post("/admin/forms/:id/delete", requireAdmin, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) return res.status(404).json({ error: "Not found" });
+
+  try {
+    // Drop the form's response table
+    await dropFormResponseTable(id);
+    // Delete form and fields (cascade will handle fields)
+    await pool.execute("DELETE FROM forms WHERE id = ?", [id]);
+    res.json({ success: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// View form responses
+app.get("/admin/forms/:id/responses", requireAdmin, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) return res.status(404).send("Not found");
+
+  const pageRaw = parseInt(pickOne(req.query.page), 10);
+  const perRaw = parseInt(pickOne(req.query.per), 10);
+  const page = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1;
+  const perPage = Number.isFinite(perRaw) && perRaw > 0 ? Math.min(200, Math.max(10, perRaw)) : 50;
+  const offset = (page - 1) * perPage;
+
+  // Filter parameters
+  const search = String(pickOne(req.query.search) || "").trim();
+  const dateFrom = String(pickOne(req.query.date_from) || "").trim();
+  const dateTo = String(pickOne(req.query.date_to) || "").trim();
+
+  try {
+    const [forms] = await pool.execute("SELECT * FROM forms WHERE id = ? LIMIT 1", [id]);
+    if (!forms.length) return res.status(404).send("Form not found");
+
+    const form = forms[0];
+    const fields = await getFormFields(id);
+
+    const tableName = getFormResponseTableName(id);
+    
+    // Build WHERE clause for filters
+    let whereConditions = [];
+    let whereParams = [];
+    
+    if (search) {
+      // Search across all text fields
+      const searchConditions = [];
+      for (const field of fields) {
+        if (["text", "email", "phone", "textarea"].includes(field.field_type)) {
+          searchConditions.push(`\`${field.field_key}\` LIKE ?`);
+          whereParams.push(`%${search}%`);
+        }
+      }
+      if (searchConditions.length > 0) {
+        whereConditions.push(`(${searchConditions.join(" OR ")})`);
+      }
+    }
+    
+    if (dateFrom) {
+      whereConditions.push(`DATE(created_at) >= ?`);
+      whereParams.push(dateFrom);
+    }
+    
+    if (dateTo) {
+      whereConditions.push(`DATE(created_at) <= ?`);
+      whereParams.push(dateTo);
+    }
+    
+    // Field-specific filters
+    for (const field of fields) {
+      if (["dropdown", "radio"].includes(field.field_type)) {
+        const filterValue = String(pickOne(req.query[`filter_${field.field_key}`]) || "").trim();
+        if (filterValue) {
+          whereConditions.push(`\`${field.field_key}\` = ?`);
+          whereParams.push(filterValue);
+        }
+      }
+    }
+    
+    const whereClause = whereConditions.length > 0 
+      ? `WHERE ${whereConditions.join(" AND ")}` 
+      : "";
+
+    // Get total count with filters
+    const [countRows] = await pool.query(
+      `SELECT COUNT(*) as c FROM \`${tableName}\` ${whereClause}`,
+      whereParams
+    );
+    const total = countRows[0]?.c || 0;
+
+    // Get filtered and paginated rows
+    const [rows] = await pool.query(
+      `SELECT * FROM \`${tableName}\` ${whereClause} ORDER BY created_at DESC LIMIT ${perPage} OFFSET ${offset}`,
+      whereParams
+    );
+
+    // Extract field values from rows
+    const parsedRows = rows.map((row) => {
+      const fieldData = {};
+      for (const field of fields) {
+        let value = row[field.field_key];
+        if (field.field_type === "checkbox" && value) {
+          try {
+            value = typeof value === "string" ? JSON.parse(value) : value;
+          } catch {
+            value = [];
+          }
+        }
+        fieldData[field.field_key] = value !== null && value !== undefined ? value : null;
+      }
+      return {
+        ...row,
+        response_data_parsed: fieldData,
+      };
+    });
+
+    // Get unique values for filter dropdowns (for dropdown/radio fields)
+    const filterOptions = {};
+    for (const field of fields) {
+      if (["dropdown", "radio"].includes(field.field_type)) {
+        try {
+          const [options] = await pool.query(
+            `SELECT DISTINCT \`${field.field_key}\` as value, COUNT(*) as count
+             FROM \`${tableName}\`
+             WHERE \`${field.field_key}\` IS NOT NULL
+             GROUP BY \`${field.field_key}\`
+             ORDER BY count DESC
+             LIMIT 50`
+          );
+          filterOptions[field.field_key] = options.map(o => o.value).filter(Boolean);
+        } catch (e) {
+          console.error(`Error getting filter options for ${field.field_key}:`, e);
+          filterOptions[field.field_key] = [];
+        }
+      }
+    }
+
+    res.render("admin_form_responses", {
+      form,
+      fields,
+      rows: parsedRows,
+      page,
+      perPage,
+      total,
+      search,
+      dateFrom,
+      dateTo,
+      filterOptions,
+      query: req.query,
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).send("Server error");
+  }
+});
+
+// Export form responses as CSV
+app.get("/admin/forms/:id/responses.csv", requireAdmin, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) return res.status(404).send("Not found");
+
+  try {
+    const [forms] = await pool.execute("SELECT * FROM forms WHERE id = ? LIMIT 1", [id]);
+    if (!forms.length) return res.status(404).send("Form not found");
+
+    const form = forms[0];
+    const fields = await getFormFields(id);
+
+    const tableName = getFormResponseTableName(id);
+    const [rows] = await pool.execute(
+      `SELECT * FROM \`${tableName}\` ORDER BY created_at DESC`
+    );
+
+    // Build CSV headers - default columns first, then form fields
+    const headers = ["id", "created_at", "edit_key", "utm_source", "utm_medium", "utm_campaign", "referrer", "ip_address", "user_agent", "updated_at"];
+    fields.forEach((field) => {
+      headers.push(field.field_key);
+    });
+
+    const lines = [];
+    lines.push(headers.map(toCsvValue).join(","));
+
+    for (const row of rows) {
+      const csvRow = [
+        row.id,
+        row.created_at,
+        row.edit_key || "",
+        row.utm_source || "",
+        row.utm_medium || "",
+        row.utm_campaign || "",
+        row.referrer || "",
+        row.ip_address || "",
+        row.user_agent || "",
+        row.updated_at || "",
+      ];
+
+      fields.forEach((field) => {
+        let value = row[field.field_key];
+        if (field.field_type === "checkbox" && value) {
+          try {
+            const arr = typeof value === "string" ? JSON.parse(value) : value;
+            csvRow.push(Array.isArray(arr) ? arr.join(" | ") : "");
+          } catch {
+            csvRow.push("");
+          }
+        } else {
+          csvRow.push(value || "");
+        }
+      });
+
+      lines.push(csvRow.map(toCsvValue).join(","));
+    }
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename=form_${form.slug}_responses.csv`);
+    res.send(lines.join("\n"));
+  } catch (e) {
+    console.error(e);
+    res.status(500).send("Server error");
+  }
 });
 
 // -------------------- Admin: Responses (FULL TABLE) --------------------
@@ -685,7 +1687,128 @@ app.get("/admin/responses.csv", requireAdmin, async (req, res) => {
 });
 
 
-// -------------------- Admin: Report / Analytics --------------------
+// -------------------- Admin: Report / Analytics (Dynamic) --------------------
+app.get("/admin/forms/:id/report", requireAdmin, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) return res.status(404).send("Not found");
+
+  try {
+    const [forms] = await pool.execute("SELECT * FROM forms WHERE id = ? LIMIT 1", [id]);
+    if (!forms.length) return res.status(404).send("Form not found");
+
+    const form = forms[0];
+    const fields = await getFormFields(id);
+    const tableName = getFormResponseTableName(id);
+
+    // Check if table exists
+    const [tableCheck] = await pool.query(
+      `SELECT COUNT(*) as count FROM information_schema.tables 
+       WHERE table_schema = DATABASE() AND table_name = ?`,
+      [tableName]
+    );
+
+    if (tableCheck[0].count === 0) {
+      return res.status(404).send("No responses found for this form yet.");
+    }
+
+    // Optional: date range filter (default: last 90 days)
+    const daysRaw = parseInt(pickOne(req.query.days), 10);
+    const days = Number.isFinite(daysRaw) && daysRaw > 0 ? Math.min(365, daysRaw) : 90;
+
+    // Get totals
+    const [totalsRows] = await pool.query(
+      `SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN created_at >= (NOW() - INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS last_7_days,
+        SUM(CASE WHEN created_at >= (NOW() - INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS last_30_days
+      FROM \`${tableName}\``
+    );
+
+    const totals = totalsRows?.[0] || {};
+
+    // Generic group counter for any field
+    async function groupCount(fieldKey) {
+      const field = fields.find(f => f.field_key === fieldKey);
+      if (!field) return [];
+
+      const [rows] = await pool.query(
+        `SELECT \`${fieldKey}\` AS k, COUNT(*) AS c
+         FROM \`${tableName}\`
+         WHERE \`${fieldKey}\` IS NOT NULL
+         GROUP BY \`${fieldKey}\`
+         ORDER BY c DESC
+         LIMIT 20`
+      );
+
+      return rows.map((r) => {
+        let displayValue = r.k;
+        // Handle checkbox (JSON arrays)
+        if (field.field_type === "checkbox") {
+          try {
+            const arr = typeof r.k === "string" ? JSON.parse(r.k) : r.k;
+            displayValue = Array.isArray(arr) ? arr.join(", ") : String(r.k);
+          } catch {
+            displayValue = String(r.k);
+          }
+        }
+        return {
+          key: r.k,
+          label: displayValue,
+          count: Number(r.c || 0),
+        };
+      });
+    }
+
+    // Get field statistics for dropdown/radio fields
+    const fieldStats = {};
+    for (const field of fields) {
+      if (["dropdown", "radio", "checkbox"].includes(field.field_type)) {
+        fieldStats[field.field_key] = await groupCount(field.field_key);
+      }
+    }
+
+    // Daily trend (last N days)
+    const [dailyRows] = await pool.query(
+      `SELECT DATE(created_at) AS d, COUNT(*) AS c
+       FROM \`${tableName}\`
+       WHERE created_at >= (NOW() - INTERVAL ? DAY)
+       GROUP BY DATE(created_at)
+       ORDER BY d ASC`,
+      [days]
+    );
+
+    const daily = dailyRows.map((r) => ({
+      date: r.d,
+      count: Number(r.c || 0),
+    }));
+
+    // KPI percentages
+    const total = Number(totals.total || 0) || 0;
+    const pct = (n) => (total ? Math.round((Number(n || 0) / total) * 100) : 0);
+
+    const kpis = {
+      total,
+      last_7_days: Number(totals.last_7_days || 0),
+      last_30_days: Number(totals.last_30_days || 0),
+      last_7_days_pct: pct(totals.last_7_days),
+      last_30_days_pct: pct(totals.last_30_days),
+    };
+
+    res.render("admin_form_report", {
+      form,
+      fields,
+      kpis,
+      fieldStats,
+      daily,
+      days,
+    });
+  } catch (e) {
+    console.error("Error generating report:", e);
+    res.status(500).send("Server error");
+  }
+});
+
+// Legacy report route (for old survey_responses table)
 app.get("/admin/report", requireAdmin, async (req, res) => {
   // optional: date range filter (default: last 90 days)
   const daysRaw = parseInt(pickOne(req.query.days), 10);
@@ -817,6 +1940,10 @@ app.get("/admin/report", requireAdmin, async (req, res) => {
   });
 });
 
+// 404 handler - must be last, after all routes
+app.use((req, res) => {
+  res.status(404).render("404");
+});
 
 // -------------------- Start --------------------
 const PORT = Number(process.env.PORT || 3000);
