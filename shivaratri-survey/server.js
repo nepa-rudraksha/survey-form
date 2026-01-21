@@ -1711,9 +1711,25 @@ app.get("/admin/forms/:id/report", requireAdmin, async (req, res) => {
       return res.status(404).send("No responses found for this form yet.");
     }
 
-    // Optional: date range filter (default: last 90 days)
+    // Date range filter
+    const dateFrom = pickOne(req.query.date_from) || null;
+    const dateTo = pickOne(req.query.date_to) || null;
     const daysRaw = parseInt(pickOne(req.query.days), 10);
     const days = Number.isFinite(daysRaw) && daysRaw > 0 ? Math.min(365, daysRaw) : 90;
+
+    // Build WHERE clause for date filtering
+    let dateWhereClause = "";
+    const dateParams = [];
+    if (dateFrom && dateTo) {
+      dateWhereClause = "WHERE created_at >= ? AND created_at <= ?";
+      dateParams.push(dateFrom + " 00:00:00", dateTo + " 23:59:59");
+    } else if (dateFrom) {
+      dateWhereClause = "WHERE created_at >= ?";
+      dateParams.push(dateFrom + " 00:00:00");
+    } else if (dateTo) {
+      dateWhereClause = "WHERE created_at <= ?";
+      dateParams.push(dateTo + " 23:59:59");
+    }
 
     // Get totals
     const [totalsRows] = await pool.query(
@@ -1721,7 +1737,8 @@ app.get("/admin/forms/:id/report", requireAdmin, async (req, res) => {
         COUNT(*) AS total,
         SUM(CASE WHEN created_at >= (NOW() - INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS last_7_days,
         SUM(CASE WHEN created_at >= (NOW() - INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS last_30_days
-      FROM \`${tableName}\``
+      FROM \`${tableName}\` ${dateWhereClause}`,
+      dateParams
     );
 
     const totals = totalsRows?.[0] || {};
@@ -1731,13 +1748,20 @@ app.get("/admin/forms/:id/report", requireAdmin, async (req, res) => {
       const field = fields.find(f => f.field_key === fieldKey);
       if (!field) return [];
 
+      let whereClause = `WHERE \`${fieldKey}\` IS NOT NULL`;
+      const queryParams = [...dateParams];
+      if (dateWhereClause) {
+        whereClause = dateWhereClause + ` AND \`${fieldKey}\` IS NOT NULL`;
+      }
+
       const [rows] = await pool.query(
         `SELECT \`${fieldKey}\` AS k, COUNT(*) AS c
          FROM \`${tableName}\`
-         WHERE \`${fieldKey}\` IS NOT NULL
+         ${whereClause}
          GROUP BY \`${fieldKey}\`
          ORDER BY c DESC
-         LIMIT 20`
+         LIMIT 20`,
+        queryParams
       );
 
       return rows.map((r) => {
@@ -1767,14 +1791,24 @@ app.get("/admin/forms/:id/report", requireAdmin, async (req, res) => {
       }
     }
 
-    // Daily trend (last N days)
+    // Daily trend (use date range if provided, otherwise last N days)
+    let dailyWhereClause = "";
+    let dailyParams = [];
+    if (dateWhereClause) {
+      dailyWhereClause = dateWhereClause;
+      dailyParams = [...dateParams];
+    } else {
+      dailyWhereClause = "WHERE created_at >= (NOW() - INTERVAL ? DAY)";
+      dailyParams = [days];
+    }
+
     const [dailyRows] = await pool.query(
       `SELECT DATE(created_at) AS d, COUNT(*) AS c
        FROM \`${tableName}\`
-       WHERE created_at >= (NOW() - INTERVAL ? DAY)
+       ${dailyWhereClause}
        GROUP BY DATE(created_at)
        ORDER BY d ASC`,
-      [days]
+      dailyParams
     );
 
     const daily = dailyRows.map((r) => ({
@@ -1801,6 +1835,8 @@ app.get("/admin/forms/:id/report", requireAdmin, async (req, res) => {
       fieldStats,
       daily,
       days,
+      dateFrom,
+      dateTo,
     });
   } catch (e) {
     console.error("Error generating report:", e);

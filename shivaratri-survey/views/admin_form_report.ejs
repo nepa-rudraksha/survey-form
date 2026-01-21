@@ -28,16 +28,42 @@
           <a href="/admin/forms" class="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50">
             Back to Forms
           </a>
-          <form method="GET" action="/admin/forms/<%= form.id %>/report" class="flex items-center gap-2">
-            <label class="text-sm text-neutral-600">Trend range</label>
-            <select name="days" class="rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm">
-              <% [30,60,90,180,365].forEach(function(n){ %>
-                <option value="<%= n %>" <%= (String(days) === String(n)) ? 'selected' : '' %>><%= n %> days</option>
-              <% }) %>
-            </select>
+          <form method="GET" action="/admin/forms/<%= form.id %>/report" class="flex flex-wrap items-center gap-3">
+            <div class="flex items-center gap-2">
+              <label class="text-sm text-neutral-600 whitespace-nowrap">Date From</label>
+              <input
+                type="date"
+                name="date_from"
+                value="<%= dateFrom || '' %>"
+                class="rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm"
+              />
+            </div>
+            <div class="flex items-center gap-2">
+              <label class="text-sm text-neutral-600 whitespace-nowrap">Date To</label>
+              <input
+                type="date"
+                name="date_to"
+                value="<%= dateTo || '' %>"
+                class="rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm"
+              />
+            </div>
+            <div class="flex items-center gap-2">
+              <label class="text-sm text-neutral-600 whitespace-nowrap">Or Last</label>
+              <select name="days" class="rounded-xl border border-neutral-300 bg-white px-3 py-2 text-sm">
+                <option value="">Select days</option>
+                <% [30,60,90,180,365].forEach(function(n){ %>
+                  <option value="<%= n %>" <%= (String(days) === String(n)) ? 'selected' : '' %>><%= n %> days</option>
+                <% }) %>
+              </select>
+            </div>
             <button class="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-95" type="submit">
               Apply
             </button>
+            <% if (dateFrom || dateTo || days) { %>
+              <a href="/admin/forms/<%= form.id %>/report" class="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50">
+                Clear
+              </a>
+            <% } %>
           </form>
           <form method="POST" action="/admin/logout">
             <button type="submit" class="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
@@ -74,8 +100,17 @@
   <main class="mx-auto max-w-7xl px-4 py-8 space-y-6">
     <!-- Daily trend -->
     <div class="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
-      <h2 class="text-lg font-semibold mb-4">Daily Submissions Trend</h2>
-      <canvas id="dailyChart" height="60"></canvas>
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold">Daily Submissions Trend</h2>
+        <select id="dailyChartType" class="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm" onchange="changeChartType('dailyChart', this.value)">
+          <option value="line">Line</option>
+          <option value="bar">Bar</option>
+          <option value="area">Area</option>
+        </select>
+      </div>
+      <div class="h-64">
+        <canvas id="dailyChart"></canvas>
+      </div>
     </div>
 
     <!-- Field Statistics -->
@@ -85,10 +120,18 @@
          if (!field || !stats || stats.length === 0) return;
     %>
       <div class="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
-        <h2 class="text-lg font-semibold mb-4"><%= field.label %></h2>
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-lg font-semibold"><%= field.label %></h2>
+          <select id="chartType_<%= fieldKey %>" class="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm" onchange="changeChartType('chart_<%= fieldKey %>', this.value)">
+            <option value="doughnut">Doughnut</option>
+            <option value="pie">Pie</option>
+            <option value="bar">Bar</option>
+            <option value="line">Line</option>
+          </select>
+        </div>
         <div class="grid gap-4 md:grid-cols-2">
-          <div>
-            <canvas id="chart_<%= fieldKey %>" height="200"></canvas>
+          <div class="h-64">
+            <canvas id="chart_<%= fieldKey %>"></canvas>
           </div>
           <div class="space-y-2">
             <% stats.forEach(function(stat, idx) { %>
@@ -115,9 +158,52 @@
   </main>
 
   <script>
+    // Chart instances storage
+    const chartInstances = {};
+
+    // Function to change chart type
+    function changeChartType(canvasId, chartType) {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas || !chartInstances[canvasId]) return;
+
+      const oldChart = chartInstances[canvasId];
+      const config = JSON.parse(JSON.stringify(oldChart.config)); // Deep clone
+      
+      // Update chart type and properties
+      if (chartType === 'area') {
+        config.type = 'line';
+        if (config.data.datasets && config.data.datasets[0]) {
+          config.data.datasets[0].fill = true;
+        }
+      } else {
+        config.type = chartType;
+        if (config.data.datasets && config.data.datasets[0]) {
+          if (chartType === 'line') {
+            config.data.datasets[0].fill = false;
+          } else if (chartType === 'bar') {
+            config.data.datasets[0].fill = false;
+          } else if (chartType === 'doughnut' || chartType === 'pie') {
+            if (!config.data.datasets[0].backgroundColor) {
+              config.data.datasets[0].backgroundColor = [
+                '#C19A5B',
+                '#D4AF7A',
+                '#E8C49A',
+                '#F5D9BA',
+                '#F9E8D3',
+                '#FCF3E8'
+              ];
+            }
+          }
+        }
+      }
+
+      oldChart.destroy();
+      chartInstances[canvasId] = new Chart(canvas, config);
+    }
+
     // Daily trend chart
     const dailyData = <%- JSON.stringify(daily) %>;
-    new Chart(document.getElementById('dailyChart'), {
+    const dailyConfig = {
       type: 'line',
       data: {
         labels: dailyData.map(d => d.date),
@@ -127,12 +213,12 @@
           borderColor: '#C19A5B',
           backgroundColor: 'rgba(193, 154, 91, 0.1)',
           tension: 0.4,
-          fill: true
+          fill: false
         }]
       },
       options: {
         responsive: true,
-        maintainAspectRatio: true,
+        maintainAspectRatio: false,
         plugins: {
           legend: { display: false }
         },
@@ -140,20 +226,22 @@
           y: { beginAtZero: true, ticks: { stepSize: 1 } }
         }
       }
-    });
+    };
+    chartInstances['dailyChart'] = new Chart(document.getElementById('dailyChart'), dailyConfig);
 
     // Field statistics charts
     <% Object.keys(fieldStats).forEach(function(fieldKey) { 
          const stats = fieldStats[fieldKey];
          if (!stats || stats.length === 0) return;
+         const safeKey = fieldKey.replace(/[^a-zA-Z0-9]/g, '_');
     %>
-      const data_<%= fieldKey.replace(/[^a-zA-Z0-9]/g, '_') %> = <%- JSON.stringify(stats) %>;
-      new Chart(document.getElementById('chart_<%= fieldKey %>'), {
+      const data_<%= safeKey %> = <%- JSON.stringify(stats) %>;
+      const config_<%= safeKey %> = {
         type: 'doughnut',
         data: {
-          labels: data_<%= fieldKey.replace(/[^a-zA-Z0-9]/g, '_') %>.map(s => s.label),
+          labels: data_<%= safeKey %>.map(s => s.label),
           datasets: [{
-            data: data_<%= fieldKey.replace(/[^a-zA-Z0-9]/g, '_') %>.map(s => s.count),
+            data: data_<%= safeKey %>.map(s => s.count),
             backgroundColor: [
               '#C19A5B',
               '#D4AF7A',
@@ -166,12 +254,13 @@
         },
         options: {
           responsive: true,
-          maintainAspectRatio: true,
+          maintainAspectRatio: false,
           plugins: {
             legend: { position: 'bottom' }
           }
         }
-      });
+      };
+      chartInstances['chart_<%= fieldKey %>'] = new Chart(document.getElementById('chart_<%= fieldKey %>'), config_<%= safeKey %>);
     <% }); %>
   </script>
 </body>
