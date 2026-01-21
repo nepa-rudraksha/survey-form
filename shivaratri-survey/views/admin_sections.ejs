@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Manage Dynamic Sections</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: { colors: { primary: "#C19A5B" } } } };
+  </script>
+</head>
+<body class="min-h-screen bg-neutral-50 text-neutral-900">
+  <header class="border-b border-neutral-200 bg-white">
+    <div class="mx-auto max-w-7xl px-4 py-6">
+      <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 class="text-2xl font-semibold">Manage Dynamic Sections</h1>
+          <p class="text-sm text-neutral-600 mt-1">Add sections to homepage or form pages</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <a href="/admin" class="rounded-xl border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold hover:bg-neutral-50">
+            Dashboard
+          </a>
+          <form method="POST" action="/admin/logout">
+            <button type="submit" class="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-white hover:opacity-95">
+              Logout
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-7xl px-4 py-8">
+    <!-- Page Type Selector -->
+    <div class="mb-6 rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
+      <label class="block text-sm font-semibold text-neutral-700 mb-3">Select Page Type</label>
+      <div class="flex flex-wrap gap-3">
+        <a
+          href="/admin/sections?page_type=homepage"
+          class="rounded-xl px-4 py-2 text-sm font-semibold <%= pageType === 'homepage' ? 'bg-primary text-white' : 'border border-neutral-300 bg-white hover:bg-neutral-50' %>"
+        >
+          Homepage
+        </a>
+        <% forms.forEach(function(form) { %>
+          <a
+            href="/admin/sections?page_type=form&form_id=<%= form.id %>"
+            class="rounded-xl px-4 py-2 text-sm font-semibold <%= (pageType === 'form' && formId === form.id) ? 'bg-primary text-white' : 'border border-neutral-300 bg-white hover:bg-neutral-50' %>"
+          >
+            <%= form.title %>
+          </a>
+        <% }); %>
+      </div>
+    </div>
+
+    <!-- Navigation Links (Homepage Only) -->
+    <% if (pageType === 'homepage') { %>
+      <div class="mb-6 rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-lg font-semibold">Navigation Links (Scroll to Sections)</h2>
+          <button
+            onclick="addNavigationItem()"
+            class="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-95"
+          >
+            + Add Navigation Link
+          </button>
+        </div>
+        <div id="navigationContainer" class="space-y-3">
+          <!-- Navigation items will be added here -->
+        </div>
+      </div>
+    <% } %>
+
+    <!-- Sections -->
+    <div class="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold">Sections</h2>
+        <button
+          onclick="addSection()"
+          class="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-95"
+        >
+          + Add Section
+        </button>
+      </div>
+      <div id="sectionsContainer" class="space-y-4">
+        <!-- Sections will be added here -->
+      </div>
+    </div>
+
+    <!-- Save Button -->
+    <div class="mt-6 flex justify-end">
+      <button
+        id="saveSectionsBtn"
+        onclick="saveSections(event)"
+        class="rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-white hover:opacity-95"
+        type="button"
+      >
+        Save All Changes
+      </button>
+    </div>
+  </main>
+
+  <script>
+    let sections = <%- JSON.stringify(sections || []) %>;
+    let navigation = <%- JSON.stringify(navigation || []) %>;
+    let sectionIdCounter = sections.length > 0 ? Math.max(...sections.map(s => s.id || 0)) + 1 : 1;
+    let navIdCounter = navigation.length > 0 ? Math.max(...navigation.map(n => n.id || 0)) + 1 : 1;
+
+    function addSection() {
+      const section = {
+        temp_id: 'temp_' + Date.now(),
+        section_type: 'image_text',
+        title: '',
+        description: '',
+        image_url: '',
+        link_url: '',
+        link_text: '',
+        button_style: 'primary',
+        is_active: true,
+      };
+      sections.push(section);
+      renderSections();
+    }
+
+    function removeSection(index) {
+      sections.splice(index, 1);
+      renderSections();
+    }
+
+    function addNavigationItem() {
+      const nav = {
+        temp_id: 'temp_' + Date.now(),
+        link_text: '',
+        section_id: null,
+        scroll_target: '',
+        is_active: true,
+      };
+      navigation.push(nav);
+      renderNavigation();
+    }
+
+    function removeNavigationItem(index) {
+      navigation.splice(index, 1);
+      renderNavigation();
+    }
+
+    function renderSections() {
+      const container = document.getElementById('sectionsContainer');
+      container.innerHTML = sections.map((section, idx) => `
+        <div class="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-semibold">Section ${idx + 1}</h3>
+            <button
+              onclick="removeSection(${idx})"
+              class="rounded-lg bg-red-500 px-3 py-1 text-xs font-semibold text-white hover:opacity-95"
+            >
+              Remove
+            </button>
+          </div>
+          <div class="grid gap-4 md:grid-cols-2">
+            <div>
+              <label class="block text-xs font-semibold text-neutral-700 mb-1">Section Type *</label>
+              <select
+                onchange="sections[${idx}].section_type = this.value; renderSections();"
+                class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+              >
+                <option value="image_text" ${section.section_type === 'image_text' ? 'selected' : ''}>Image with Text</option>
+                <option value="link" ${section.section_type === 'link' ? 'selected' : ''}>Link</option>
+                <option value="button" ${section.section_type === 'button' ? 'selected' : ''}>Button</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-neutral-700 mb-1">Title</label>
+              <input
+                type="text"
+                value="${section.title || ''}"
+                onchange="sections[${idx}].title = this.value;"
+                class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+                placeholder="Section title"
+              />
+            </div>
+            <div class="md:col-span-2">
+              <label class="block text-xs font-semibold text-neutral-700 mb-1">Description</label>
+              <textarea
+                onchange="sections[${idx}].description = this.value;"
+                class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+                rows="3"
+                placeholder="Section description"
+              >${section.description || ''}</textarea>
+            </div>
+            ${section.section_type === 'image_text' ? `
+              <div>
+                <label class="block text-xs font-semibold text-neutral-700 mb-1">Image URL</label>
+                <input
+                  type="url"
+                  value="${section.image_url || ''}"
+                  onchange="sections[${idx}].image_url = this.value;"
+                  class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+                  placeholder="https://example.com/image.jpg"
+                />
+              </div>
+            ` : ''}
+            <div>
+              <label class="block text-xs font-semibold text-neutral-700 mb-1">Link URL</label>
+              <input
+                type="url"
+                value="${section.link_url || ''}"
+                onchange="sections[${idx}].link_url = this.value;"
+                class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+                placeholder="https://example.com"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-neutral-700 mb-1">Link/Button Text</label>
+              <input
+                type="text"
+                value="${section.link_text || ''}"
+                onchange="sections[${idx}].link_text = this.value;"
+                class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+                placeholder="Click here"
+              />
+            </div>
+            ${section.section_type === 'button' ? `
+              <div>
+                <label class="block text-xs font-semibold text-neutral-700 mb-1">Button Style</label>
+                <select
+                  onchange="sections[${idx}].button_style = this.value;"
+                  class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+                >
+                  <option value="primary" ${section.button_style === 'primary' ? 'selected' : ''}>Primary</option>
+                  <option value="secondary" ${section.button_style === 'secondary' ? 'selected' : ''}>Secondary</option>
+                  <option value="outline" ${section.button_style === 'outline' ? 'selected' : ''}>Outline</option>
+                </select>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderNavigation() {
+      const container = document.getElementById('navigationContainer');
+      if (!container) return;
+      container.innerHTML = navigation.map((nav, idx) => `
+        <div class="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-semibold">Navigation ${idx + 1}</h3>
+            <button
+              onclick="removeNavigationItem(${idx})"
+              class="rounded-lg bg-red-500 px-3 py-1 text-xs font-semibold text-white hover:opacity-95"
+            >
+              Remove
+            </button>
+          </div>
+          <div class="grid gap-4 md:grid-cols-2">
+            <div>
+              <label class="block text-xs font-semibold text-neutral-700 mb-1">Link Text *</label>
+              <input
+                type="text"
+                value="${nav.link_text || ''}"
+                onchange="navigation[${idx}].link_text = this.value;"
+                class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+                placeholder="Book Tickets"
+              />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-neutral-700 mb-1">Scroll Target *</label>
+              <input
+                type="text"
+                value="${nav.scroll_target || ''}"
+                onchange="navigation[${idx}].scroll_target = this.value;"
+                class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
+                placeholder="forms, section_1, etc."
+              />
+              <p class="text-xs text-neutral-500 mt-1">Use "forms" for forms section, or "section_X" for section ID</p>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function saveSections(event) {
+      // Prevent any form submission
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      
+      const btn = event ? event.target : document.getElementById('saveSectionsBtn');
+      if (!btn) {
+        console.error('Save button not found');
+        return;
+      }
+      
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+
+      try {
+        const payload = {
+          sections: sections,
+          navigation: navigation,
+          page_type: '<%= pageType %>',
+          <% if (formId) { %>
+          form_id: <%= formId %>,
+          <% } else { %>
+          form_id: null,
+          <% } %>
+        };
+
+        console.log('Sending payload:', payload);
+        
+        const response = await fetch('/admin/sections/save', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const result = await response.json();
+        if (result.success) {
+          alert('Sections saved successfully!');
+          window.location.reload();
+        } else {
+          alert('Error: ' + (result.error || 'Failed to save'));
+          btn.disabled = false;
+          btn.textContent = 'Save All Changes';
+        }
+      } catch (e) {
+        alert('Error: ' + e.message);
+        btn.disabled = false;
+        btn.textContent = 'Save All Changes';
+      }
+    }
+
+    // Initialize
+    renderSections();
+    <% if (pageType === 'homepage') { %>
+      renderNavigation();
+    <% } %>
+  </script>
+</body>
+</html>

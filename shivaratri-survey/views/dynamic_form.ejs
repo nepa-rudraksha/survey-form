@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title><%= form.title %></title>
+    <%- include('partials/ga') %>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -600,5 +601,82 @@
         })();
       });
     </script>
+
+    <!-- Dynamic Sections (After Form) -->
+    <% if (dynamicSections && dynamicSections.length > 0) { %>
+      <div class="mx-auto w-full max-w-7xl px-4 py-12 md:px-6">
+        <% dynamicSections.forEach(function(section, idx) { %>
+          <section class="mb-12 <%= idx % 2 === 0 ? 'bg-white' : 'bg-neutral-50' %> rounded-2xl border border-neutral-200 p-8 md:p-12">
+            <div class="mx-auto max-w-6xl">
+              <% if (section.section_type === 'image_text') { %>
+                <div class="grid gap-8 md:grid-cols-2 items-center">
+                  <% if (section.image_url) { %>
+                    <div class="<%= idx % 2 === 0 ? 'order-1' : 'order-2' %>">
+                      <img src="<%= section.image_url %>" alt="<%= section.title || '' %>" class="w-full rounded-2xl shadow-lg" />
+                    </div>
+                  <% } %>
+                  <div class="<%= idx % 2 === 0 ? 'order-2' : 'order-1' %>">
+                    <% if (section.title) { %>
+                      <h2 class="text-3xl md:text-4xl font-bold text-neutral-900 mb-4"><%= section.title %></h2>
+                    <% } %>
+                    <% if (section.description) { %>
+                      <p class="text-lg text-neutral-600 leading-relaxed mb-6"><%= section.description %></p>
+                    <% } %>
+                    <% if (section.link_url && section.link_text) { %>
+                      <a
+                        href="<%= section.link_url %>"
+                        class="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-white hover:opacity-95 transition-opacity"
+                      >
+                        <%= section.link_text %>
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                        </svg>
+                      </a>
+                    <% } %>
+                  </div>
+                </div>
+              <% } else if (section.section_type === 'link') { %>
+                <div class="text-center">
+                  <% if (section.title) { %>
+                    <h2 class="text-3xl md:text-4xl font-bold text-neutral-900 mb-4"><%= section.title %></h2>
+                  <% } %>
+                  <% if (section.description) { %>
+                    <p class="text-lg text-neutral-600 leading-relaxed mb-6 max-w-2xl mx-auto"><%= section.description %></p>
+                  <% } %>
+                  <% if (section.link_url && section.link_text) { %>
+                    <a
+                      href="<%= section.link_url %>"
+                      class="inline-flex items-center gap-2 text-lg font-semibold text-primary hover:underline"
+                    >
+                      <%= section.link_text %>
+                      <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                      </svg>
+                    </a>
+                  <% } %>
+                </div>
+              <% } else if (section.section_type === 'button') { %>
+                <div class="text-center">
+                  <% if (section.title) { %>
+                    <h2 class="text-3xl md:text-4xl font-bold text-neutral-900 mb-4"><%= section.title %></h2>
+                  <% } %>
+                  <% if (section.description) { %>
+                    <p class="text-lg text-neutral-600 leading-relaxed mb-6 max-w-2xl mx-auto"><%= section.description %></p>
+                  <% } %>
+                  <% if (section.link_url && section.link_text) { %>
+                    <a
+                      href="<%= section.link_url %>"
+                      class="inline-flex items-center gap-2 rounded-xl <%= section.button_style === 'primary' ? 'bg-primary text-white hover:opacity-95' : section.button_style === 'secondary' ? 'bg-neutral-700 text-white hover:bg-neutral-800' : 'border-2 border-primary text-primary hover:bg-primary hover:text-white' %> px-8 py-4 text-base font-semibold transition-colors"
+                    >
+                      <%= section.link_text %>
+                    </a>
+                  <% } %>
+                </div>
+              <% } %>
+            </div>
+          </section>
+        <% }); %>
+      </div>
+    <% } %>
   </body>
 </html>

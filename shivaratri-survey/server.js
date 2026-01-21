@@ -9,6 +9,7 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const cookieSession = require("cookie-session");
 const mysql = require("mysql2/promise");
+const multer = require("multer");
 
 const app = express();
 
@@ -22,8 +23,11 @@ app.use(
   })
 );
 
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '10mb' }));
+
+// Multer for multipart/form-data (as fallback)
+const upload = multer();
 app.use(express.static(path.join(__dirname, "public")));
 
 app.set("view engine", "ejs");
@@ -256,6 +260,31 @@ async function getFormFieldsBySection(formId) {
   return { sections, fieldsBySection, fieldsWithoutSection };
 }
 
+// -------------------- Dynamic Sections Helpers --------------------
+async function getDynamicSections(pageType, formId = null) {
+  let query = "SELECT * FROM dynamic_sections WHERE page_type = ? AND is_active = 1";
+  const params = [pageType];
+  
+  if (pageType === 'form' && formId) {
+    query += " AND form_id = ?";
+    params.push(formId);
+  } else if (pageType === 'homepage') {
+    query += " AND form_id IS NULL";
+  }
+  
+  query += " ORDER BY display_order ASC";
+  
+  const [rows] = await pool.execute(query, params);
+  return rows;
+}
+
+async function getHomepageNavigation() {
+  const [rows] = await pool.execute(
+    "SELECT * FROM homepage_navigation WHERE is_active = 1 ORDER BY display_order ASC"
+  );
+  return rows;
+}
+
 async function validateDynamicForm(body, fields) {
   const errors = {};
   const values = { ...body };
@@ -449,10 +478,12 @@ app.get("/", async (req, res) => {
     const [forms] = await pool.execute(
       "SELECT * FROM forms WHERE show_on_homepage = 1 AND status = 'published' ORDER BY created_at DESC"
     );
-    res.render("homepage", { forms });
+    const sections = await getDynamicSections('homepage');
+    const navigation = await getHomepageNavigation();
+    res.render("homepage", { forms, sections, navigation });
   } catch (e) {
     console.error(e);
-    res.render("homepage", { forms: [] });
+    res.render("homepage", { forms: [], sections: [], navigation: [] });
   }
 });
 
@@ -477,12 +508,14 @@ app.get("/forms/:slug", async (req, res) => {
   }
 
   const { sections, fieldsBySection, fieldsWithoutSection } = await getFormFieldsBySection(form.id);
+  const dynamicSections = await getDynamicSections('form', form.id);
 
   res.render("dynamic_form", {
     form,
     sections,
     fieldsBySection,
     fieldsWithoutSection,
+    dynamicSections,
     errors: {},
     values: {},
     pageMode: "new",
@@ -508,6 +541,7 @@ app.get("/forms/:slug/edit/:key", async (req, res) => {
 
   const row = rows[0];
   const { sections, fieldsBySection, fieldsWithoutSection } = await getFormFieldsBySection(form.id);
+  const dynamicSections = await getDynamicSections('form', form.id);
   
   // Extract values from row (excluding default columns)
   const defaultColumns = ["id", "edit_key", "created_at", "updated_at", "utm_source", "utm_medium", "utm_campaign", "referrer", "ip_address", "user_agent"];
@@ -531,6 +565,7 @@ app.get("/forms/:slug/edit/:key", async (req, res) => {
     sections,
     fieldsBySection,
     fieldsWithoutSection,
+    dynamicSections,
     errors: {},
     values,
     pageMode: "edit",
@@ -1974,6 +2009,136 @@ app.get("/admin/report", requireAdmin, async (req, res) => {
     },
     days,
   });
+});
+
+// -------------------- Admin: Dynamic Sections Management --------------------
+app.get("/admin/sections", requireAdmin, async (req, res) => {
+  try {
+    const pageType = req.query.page_type || 'homepage';
+    const formId = req.query.form_id ? parseInt(req.query.form_id, 10) : null;
+    
+    let sections = [];
+    if (pageType === 'homepage') {
+      sections = await getDynamicSections('homepage');
+    } else if (pageType === 'form' && formId) {
+      sections = await getDynamicSections('form', formId);
+    }
+    
+    const navigation = pageType === 'homepage' ? await getHomepageNavigation() : [];
+    const [forms] = await pool.execute("SELECT id, title, slug FROM forms ORDER BY title ASC");
+    
+    res.render("admin_sections", {
+      sections,
+      navigation,
+      pageType,
+      formId,
+      forms: forms || [],
+    });
+  } catch (e) {
+    console.error("Error loading sections:", e);
+    res.status(500).send("Server error");
+  }
+});
+
+app.post("/admin/sections/save", requireAdmin, upload.none(), async (req, res) => {
+  try {
+    const contentType = req.get('content-type') || '';
+    let sectionsData = [];
+    let navigationData = [];
+    let pageType = 'homepage';
+    let formId = null;
+    
+    // Handle different content types
+    if (contentType.includes('application/json')) {
+      // JSON request
+      if (!req.body) {
+        return res.status(400).json({ error: "Request body is missing." });
+      }
+      sectionsData = Array.isArray(req.body.sections) ? req.body.sections : [];
+      navigationData = Array.isArray(req.body.navigation) ? req.body.navigation : [];
+      pageType = req.body.page_type || 'homepage';
+      if (req.body.form_id && req.body.form_id !== "" && req.body.form_id !== "null" && req.body.form_id !== null) {
+        formId = parseInt(req.body.form_id, 10);
+        if (isNaN(formId)) formId = null;
+      }
+    } else if (contentType.includes('multipart/form-data') || contentType.includes('application/x-www-form-urlencoded')) {
+      // Form data - parse JSON strings
+      if (!req.body) {
+        return res.status(400).json({ error: "Request body is missing." });
+      }
+      try {
+        sectionsData = req.body.sections ? (typeof req.body.sections === 'string' ? JSON.parse(req.body.sections) : req.body.sections) : [];
+        navigationData = req.body.navigation ? (typeof req.body.navigation === 'string' ? JSON.parse(req.body.navigation) : req.body.navigation) : [];
+      } catch (e) {
+        console.error("Error parsing form data:", e);
+        return res.status(400).json({ error: "Invalid JSON in form data: " + e.message });
+      }
+      pageType = req.body.page_type || 'homepage';
+      if (req.body.form_id && req.body.form_id !== "" && req.body.form_id !== "null" && req.body.form_id !== null) {
+        formId = parseInt(req.body.form_id, 10);
+        if (isNaN(formId)) formId = null;
+      }
+    } else {
+      return res.status(400).json({ error: "Unsupported content type. Please use application/json." });
+    }
+    
+    // Ensure arrays
+    if (!Array.isArray(sectionsData)) sectionsData = [];
+    if (!Array.isArray(navigationData)) navigationData = [];
+    
+    // Delete existing sections for this page
+    if (pageType === 'homepage') {
+      await pool.execute("DELETE FROM dynamic_sections WHERE page_type = 'homepage' AND form_id IS NULL");
+      await pool.execute("DELETE FROM homepage_navigation");
+    } else if (pageType === 'form' && formId) {
+      await pool.execute("DELETE FROM dynamic_sections WHERE page_type = 'form' AND form_id = ?", [formId]);
+    }
+    
+    // Insert sections
+    for (let i = 0; i < sectionsData.length; i++) {
+      const section = sectionsData[i];
+      await pool.execute(
+        `INSERT INTO dynamic_sections (page_type, form_id, section_type, title, description, image_url, link_url, link_text, button_style, display_order, is_active)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          pageType,
+          formId,
+          section.section_type || 'image_text',
+          section.title || null,
+          section.description || null,
+          section.image_url || null,
+          section.link_url || null,
+          section.link_text || null,
+          section.button_style || 'primary',
+          i,
+          section.is_active !== false ? 1 : 0,
+        ]
+      );
+    }
+    
+    // Insert navigation (homepage only)
+    if (pageType === 'homepage') {
+      for (let i = 0; i < navigationData.length; i++) {
+        const nav = navigationData[i];
+        await pool.execute(
+          `INSERT INTO homepage_navigation (link_text, section_id, scroll_target, display_order, is_active)
+           VALUES (?, ?, ?, ?, ?)`,
+          [
+            nav.link_text || '',
+            nav.section_id || null,
+            nav.scroll_target || null,
+            i,
+            nav.is_active !== false ? 1 : 0,
+          ]
+        );
+      }
+    }
+    
+    res.json({ success: true });
+  } catch (e) {
+    console.error("Error saving sections:", e);
+    res.status(500).json({ error: "Server error: " + e.message });
+  }
 });
 
 // 404 handler - must be last, after all routes

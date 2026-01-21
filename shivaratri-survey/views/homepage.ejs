@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Nepa Rudraksha — Survey Forms</title>
+    <%- include('partials/ga') %>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -47,18 +48,34 @@
             Welcome to Our
             <span class="text-primary">Survey Platform</span>
           </h1>
-          <p class="mx-auto max-w-2xl text-lg md:text-xl text-neutral-600 leading-relaxed">
+          <p class="mx-auto max-w-2xl text-lg md:text-xl text-neutral-600 leading-relaxed mb-8">
             Share your thoughts, help us improve, and be part of our community. 
             Select a form below to get started.
           </p>
+          
+          <!-- Navigation Links (Scroll to Section) -->
+          <% if (navigation && navigation.length > 0) { %>
+            <div class="flex flex-wrap items-center justify-center gap-3 mt-8">
+              <% navigation.forEach(function(nav) { %>
+                <a
+                  href="#<%= nav.scroll_target || 'forms' %>"
+                  onclick="event.preventDefault(); document.getElementById('<%= nav.scroll_target || 'forms' %>').scrollIntoView({ behavior: 'smooth', block: 'start' });"
+                  class="rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold text-neutral-700 hover:bg-primary hover:text-white hover:border-primary transition-colors shadow-sm"
+                >
+                  <%= nav.link_text %>
+                </a>
+              <% }); %>
+            </div>
+          <% } %>
         </div>
       </div>
     </header>
 
     <!-- Main Content -->
     <main class="mx-auto w-full max-w-7xl">
+
       <!-- Forms Section -->
-      <section class="px-4 py-12 md:px-6 md:py-16">
+      <section id="forms" class="px-4 py-12 md:px-6 md:py-16">
         <% if (!forms || forms.length === 0) { %>
           <div class="rounded-2xl border-2 border-dashed border-neutral-200 bg-gradient-to-br from-neutral-50 to-white p-12 text-center">
             <svg class="mx-auto h-16 w-16 text-neutral-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -119,6 +136,81 @@
           </div>
         <% } %>
       </section>
+
+      <!-- Dynamic Sections -->
+      <% if (sections && sections.length > 0) { %>
+        <% sections.forEach(function(section, idx) { %>
+          <section id="section_<%= section.id || idx %>" class="px-4 py-12 md:px-6 md:py-16 <%= idx % 2 === 0 ? 'bg-white' : 'gradient-bg' %>">
+            <div class="mx-auto max-w-6xl">
+              <% if (section.section_type === 'image_text') { %>
+                <div class="grid gap-8 md:grid-cols-2 items-center">
+                  <% if (section.image_url) { %>
+                    <div class="<%= idx % 2 === 0 ? 'order-1' : 'order-2' %>">
+                      <img src="<%= section.image_url %>" alt="<%= section.title || '' %>" class="w-full rounded-2xl shadow-lg" />
+                    </div>
+                  <% } %>
+                  <div class="<%= idx % 2 === 0 ? 'order-2' : 'order-1' %>">
+                    <% if (section.title) { %>
+                      <h2 class="text-3xl md:text-4xl font-bold text-neutral-900 mb-4"><%= section.title %></h2>
+                    <% } %>
+                    <% if (section.description) { %>
+                      <p class="text-lg text-neutral-600 leading-relaxed mb-6"><%= section.description %></p>
+                    <% } %>
+                    <% if (section.link_url && section.link_text) { %>
+                      <a
+                        href="<%= section.link_url %>"
+                        class="inline-flex items-center gap-2 rounded-xl bg-primary px-6 py-3 text-sm font-semibold text-white hover:opacity-95 transition-opacity"
+                      >
+                        <%= section.link_text %>
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                        </svg>
+                      </a>
+                    <% } %>
+                  </div>
+                </div>
+              <% } else if (section.section_type === 'link') { %>
+                <div class="text-center">
+                  <% if (section.title) { %>
+                    <h2 class="text-3xl md:text-4xl font-bold text-neutral-900 mb-4"><%= section.title %></h2>
+                  <% } %>
+                  <% if (section.description) { %>
+                    <p class="text-lg text-neutral-600 leading-relaxed mb-6 max-w-2xl mx-auto"><%= section.description %></p>
+                  <% } %>
+                  <% if (section.link_url && section.link_text) { %>
+                    <a
+                      href="<%= section.link_url %>"
+                      class="inline-flex items-center gap-2 text-lg font-semibold text-primary hover:underline"
+                    >
+                      <%= section.link_text %>
+                      <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                      </svg>
+                    </a>
+                  <% } %>
+                </div>
+              <% } else if (section.section_type === 'button') { %>
+                <div class="text-center">
+                  <% if (section.title) { %>
+                    <h2 class="text-3xl md:text-4xl font-bold text-neutral-900 mb-4"><%= section.title %></h2>
+                  <% } %>
+                  <% if (section.description) { %>
+                    <p class="text-lg text-neutral-600 leading-relaxed mb-6 max-w-2xl mx-auto"><%= section.description %></p>
+                  <% } %>
+                  <% if (section.link_url && section.link_text) { %>
+                    <a
+                      href="<%= section.link_url %>"
+                      class="inline-flex items-center gap-2 rounded-xl <%= section.button_style === 'primary' ? 'bg-primary text-white hover:opacity-95' : section.button_style === 'secondary' ? 'bg-neutral-700 text-white hover:bg-neutral-800' : 'border-2 border-primary text-primary hover:bg-primary hover:text-white' %> px-8 py-4 text-base font-semibold transition-colors"
+                    >
+                      <%= section.link_text %>
+                    </a>
+                  <% } %>
+                </div>
+              <% } %>
+            </div>
+          </section>
+        <% }); %>
+      <% } %>
 
       <!-- Info Section -->
       <section class="gradient-bg border-y border-primary/10 px-4 py-16 md:px-6 md:py-20">
