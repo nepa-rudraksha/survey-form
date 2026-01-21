@@ -172,6 +172,17 @@
       return 'field_' + (++fieldCounter) + '_' + Date.now();
     }
 
+    // Convert label to snake_case field key
+    function labelToFieldKey(label) {
+      if (!label) return '';
+      return String(label)
+        .toLowerCase()
+        .trim()
+        .replace(/[^\w\s-]/g, '') // Remove special characters
+        .replace(/[\s_-]+/g, '_') // Replace spaces, hyphens, underscores with single underscore
+        .replace(/^_+|_+$/g, ''); // Remove leading/trailing underscores
+    }
+
     function generateSectionId() {
       return 'section_' + (++sectionCounter) + '_' + Date.now();
     }
@@ -267,6 +278,10 @@
         fieldDiv.dataset.sectionId = sectionId;
       }
 
+      // Generate field key from label if not provided, but preserve existing keys
+      const autoFieldKey = field.field_key || (field.label ? labelToFieldKey(field.label) : 'field_' + fieldId);
+      const isExistingField = !!field.field_key; // Track if this is an existing field
+      
       fieldDiv.innerHTML = `
         <div class="flex items-start justify-between mb-3">
           <h3 class="text-sm font-semibold text-neutral-900">Field</h3>
@@ -284,16 +299,19 @@
 
         <div class="grid gap-4 md:grid-cols-2">
           <div>
-            <label class="block text-xs font-semibold text-neutral-700 mb-1">Field Key *</label>
+            <label class="block text-xs font-semibold text-neutral-700 mb-1">Field Name (Auto-generated)</label>
             <input
               type="text"
+              id="field_key_${fieldId}"
               name="field_key_${fieldId}"
-              value="${field.field_key || ''}"
-              required
-              pattern="[a-z0-9_]+"
-              class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
-              placeholder="field_key"
+              value="${autoFieldKey}"
+              readonly
+              data-original-label="${field.label || ''}"
+              data-is-existing="${isExistingField ? 'true' : 'false'}"
+              class="w-full rounded-lg border border-neutral-300 bg-neutral-100 px-3 py-2 text-sm text-neutral-600 cursor-not-allowed"
+              placeholder="Will be generated from label"
             />
+            <p class="mt-1 text-xs text-neutral-500">Automatically generated from label</p>
           </div>
 
           <div>
@@ -312,12 +330,15 @@
           <label class="block text-xs font-semibold text-neutral-700 mb-1">Label *</label>
           <input
             type="text"
+            id="field_label_${fieldId}"
             name="field_label_${fieldId}"
             value="${field.label || ''}"
             required
+            oninput="updateFieldKeyFromLabel('${fieldId}', this.value)"
             class="w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm"
-            placeholder="Field label"
+            placeholder="Field label (e.g., Email Address)"
           />
+          <p class="mt-1 text-xs text-neutral-500">Field name will be auto-generated: <span id="field_key_preview_${fieldId}" class="font-mono text-primary">${autoFieldKey || 'email_address'}</span></p>
         </div>
 
         <div class="mt-3">
@@ -386,6 +407,33 @@
           container.style.display = 'block';
         } else {
           container.style.display = 'none';
+        }
+      }
+    }
+
+    // Auto-update field key from label
+    function updateFieldKeyFromLabel(fieldId, label) {
+      const fieldKeyInput = document.getElementById(`field_key_${fieldId}`);
+      const previewSpan = document.getElementById(`field_key_preview_${fieldId}`);
+      
+      if (!fieldKeyInput) return;
+      
+      const autoKey = labelToFieldKey(label);
+      const isExisting = fieldKeyInput.dataset.isExisting === 'true';
+      const originalLabel = fieldKeyInput.dataset.originalLabel || '';
+      
+      // Only auto-update for new fields (not existing ones)
+      // For existing fields, preserve the original field_key
+      if (!isExisting) {
+        fieldKeyInput.value = autoKey;
+        fieldKeyInput.dataset.originalLabel = label;
+      }
+      
+      // Always update preview to show what it would be
+      if (previewSpan) {
+        previewSpan.textContent = autoKey || 'field_name';
+        if (isExisting && autoKey !== fieldKeyInput.value) {
+          previewSpan.textContent += ' (current: ' + fieldKeyInput.value + ')';
         }
       }
     }

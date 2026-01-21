@@ -158,22 +158,24 @@
 
       <!-- Table Section -->
       <div class="rounded-2xl border border-neutral-200 bg-white shadow-sm overflow-hidden">
-        <div class="table-container">
-          <table class="min-w-full text-left text-sm">
+        <div class="table-container overflow-x-auto">
+          <table class="min-w-full text-left text-sm table-fixed">
             <thead class="sticky-header border-b-2 border-primary/20">
               <tr class="bg-gradient-to-r from-neutral-50 to-white">
-                <th class="px-4 py-4 font-bold text-neutral-900 whitespace-nowrap">#</th>
-                <th class="px-4 py-4 font-bold text-neutral-900 whitespace-nowrap">Date</th>
+                <th class="px-4 py-4 font-bold text-neutral-900 whitespace-nowrap w-16">#</th>
+                <th class="px-4 py-4 font-bold text-neutral-900 whitespace-nowrap w-32">Date</th>
                 <% fields.forEach(function(field) { %>
-                  <th class="px-4 py-4 font-bold text-neutral-900 whitespace-nowrap min-w-[150px]">
-                    <%= field.label %>
-                    <% if (field.required) { %>
-                      <span class="text-red-500">*</span>
-                    <% } %>
+                  <th class="px-4 py-4 font-bold text-neutral-900 min-w-[120px] max-w-[200px]">
+                    <div class="break-words">
+                      <%= field.label %>
+                      <% if (field.required) { %>
+                        <span class="text-red-500">*</span>
+                      <% } %>
+                    </div>
                   </th>
                 <% }); %>
-                <th class="px-4 py-4 font-bold text-neutral-900 whitespace-nowrap">Source</th>
-                <th class="px-4 py-4 font-bold text-neutral-900 whitespace-nowrap">IP</th>
+                <th class="px-4 py-4 font-bold text-neutral-900 whitespace-nowrap w-32">Source</th>
+                <th class="px-4 py-4 font-bold text-neutral-900 whitespace-nowrap w-32">IP</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-neutral-100">
@@ -198,24 +200,22 @@
                         
                         if (field.field_type === 'checkbox' && Array.isArray(value)) {
                           displayValue = value.length > 0 ? value.join(', ') : '-';
-                        } else if (field.field_type === 'textarea' && value) {
-                          displayValue = value.length > 100 ? value.substring(0, 100) + '...' : value;
                         } else if (!value || value === '') {
                           displayValue = '-';
                         }
                       %>
-                      <div class="max-w-xs">
+                      <div class="max-w-[200px] break-words">
                         <span class="text-sm text-neutral-900"><%= displayValue %></span>
                       </div>
                     </td>
                   <% }); %>
-                  <td class="px-4 py-4 whitespace-nowrap">
+                  <td class="px-4 py-4">
                     <% if (row.utm_source || row.utm_medium) { %>
-                      <div class="text-xs">
-                        <div class="font-semibold text-neutral-900"><%= row.utm_source || '-' %></div>
-                        <div class="text-neutral-600"><%= row.utm_medium || '-' %></div>
+                      <div class="text-xs max-w-[120px] break-words">
+                        <div class="font-semibold text-neutral-900 break-words"><%= row.utm_source || '-' %></div>
+                        <div class="text-neutral-600 break-words"><%= row.utm_medium || '-' %></div>
                         <% if (row.utm_campaign) { %>
-                          <div class="text-neutral-500 text-[10px]"><%= row.utm_campaign %></div>
+                          <div class="text-neutral-500 text-[10px] break-words"><%= row.utm_campaign %></div>
                         <% } %>
                       </div>
                     <% } else { %>
@@ -223,7 +223,7 @@
                     <% } %>
                   </td>
                   <td class="px-4 py-4 whitespace-nowrap">
-                    <span class="text-xs font-mono text-neutral-600"><%= row.ip_address || '-' %></span>
+                    <span class="text-xs font-mono text-neutral-600 break-all"><%= row.ip_address || '-' %></span>
                   </td>
                 </tr>
               <% }); %>
