@@ -10,6 +10,7 @@ const rateLimit = require("express-rate-limit");
 const cookieSession = require("cookie-session");
 const mysql = require("mysql2/promise");
 const multer = require("multer");
+const cors = require("cors");
 
 const app = express();
 
@@ -22,6 +23,31 @@ app.use(
     contentSecurityPolicy: false,
   })
 );
+
+// CORS configuration for API endpoints
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Allow requests from nepalirudraksha.com and its subdomains
+    const allowedPatterns = [
+      /^https?:\/\/(www\.)?nepalirudraksha\.com$/,
+      /^https?:\/\/.*\.nepalirudraksha\.com$/,
+    ];
+    
+    if (allowedPatterns.some(pattern => pattern.test(origin))) {
+      callback(null, true);
+    } else {
+      // For development/testing, allow all origins
+      // In production, you may want to restrict this
+      callback(null, true);
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+}));
 
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(express.json({ limit: '10mb' }));
