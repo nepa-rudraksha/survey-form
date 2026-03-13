@@ -47,7 +47,13 @@
             href="/admin/sections?page_type=form&form_id=<%= form.id %>"
             class="rounded-xl px-4 py-2 text-sm font-semibold <%= (pageType === 'form' && formId === form.id) ? 'bg-primary text-white' : 'border border-neutral-300 bg-white hover:bg-neutral-50' %>"
           >
-            <%= form.title %>
+            <%= form.title %> (Form)
+          </a>
+          <a
+            href="/admin/sections?page_type=success&form_id=<%= form.id %>"
+            class="rounded-xl px-4 py-2 text-sm font-semibold <%= (pageType === 'success' && formId === form.id) ? 'bg-primary text-white' : 'border border-neutral-300 bg-white hover:bg-neutral-50' %>"
+          >
+            <%= form.title %> (Success)
           </a>
         <% }); %>
       </div>

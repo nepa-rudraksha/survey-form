@@ -270,6 +270,11 @@ async function getDynamicSections(pageType, formId = null) {
     params.push(formId);
   } else if (pageType === 'homepage') {
     query += " AND form_id IS NULL";
+  } else if (pageType === 'success' && formId) {
+    query += " AND form_id = ?";
+    params.push(formId);
+  } else if (pageType === 'success') {
+    query += " AND form_id IS NULL";
   }
   
   query += " ORDER BY display_order ASC";
@@ -654,9 +659,14 @@ app.post("/forms/:slug/submit", async (req, res) => {
     return res.status(500).send("Server error");
   }
 
+  // Get dynamic sections for success page
+  const successSections = await getDynamicSections('success', form.id);
+  
   return res.render("success", {
     editUrl: `/forms/${form.slug}/edit/${editKey}`,
     mobile_number: values.mobile_number || values.phone || "",
+    sections: successSections,
+    form: form,
   });
 });
 
@@ -727,9 +737,14 @@ app.post("/forms/:slug/update/:key", async (req, res) => {
     return res.status(500).send("Server error");
   }
 
+  // Get dynamic sections for success page
+  const successSections = await getDynamicSections('success', form.id);
+  
   return res.render("success", {
     editUrl: `/forms/${form.slug}/edit/${key}`,
     mobile_number: values.mobile_number || values.phone || "",
+    sections: successSections,
+    form: form,
   });
 });
 
@@ -855,9 +870,14 @@ app.post("/submit", async (req, res) => {
     return res.status(500).send("Server error");
   }
 
+  // Get dynamic sections for success page (legacy form - no form_id)
+  const successSections = await getDynamicSections('success', null);
+  
   return res.render("success", {
     editUrl: `/edit/${editKey}`,
     mobile_number: mobile,
+    sections: successSections,
+    form: null,
   });
 });
 
@@ -951,9 +971,14 @@ app.post("/update/:key", async (req, res) => {
     return res.status(500).send("Server error");
   }
 
+  // Get dynamic sections for success page (legacy form - no form_id)
+  const successSections = await getDynamicSections('success', null);
+  
   return res.render("success", {
     editUrl: `/edit/${key}`,
     mobile_number: normalizeMobile(values.mobile_number),
+    sections: successSections,
+    form: null,
   });
 });
 
@@ -2092,6 +2117,10 @@ app.post("/admin/sections/save", requireAdmin, upload.none(), async (req, res) =
       await pool.execute("DELETE FROM homepage_navigation");
     } else if (pageType === 'form' && formId) {
       await pool.execute("DELETE FROM dynamic_sections WHERE page_type = 'form' AND form_id = ?", [formId]);
+    } else if (pageType === 'success' && formId) {
+      await pool.execute("DELETE FROM dynamic_sections WHERE page_type = 'success' AND form_id = ?", [formId]);
+    } else if (pageType === 'success') {
+      await pool.execute("DELETE FROM dynamic_sections WHERE page_type = 'success' AND form_id IS NULL");
     }
     
     // Insert sections
@@ -2137,6 +2166,56 @@ app.post("/admin/sections/save", requireAdmin, upload.none(), async (req, res) =
     res.json({ success: true });
   } catch (e) {
     console.error("Error saving sections:", e);
+    res.status(500).json({ error: "Server error: " + e.message });
+  }
+});
+
+// -------------------- API: Interested Signups --------------------
+// POST /api/interested-signups
+// Body: { email, source, country_code }
+app.post("/api/interested-signups", async (req, res) => {
+  try {
+    const { email, source, country_code } = req.body;
+
+    // Validation
+    if (!email || typeof email !== 'string' || !email.trim()) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      return res.status(400).json({ error: "Invalid email format" });
+    }
+
+    if (!source || typeof source !== 'string' || !source.trim()) {
+      return res.status(400).json({ error: "Source is required" });
+    }
+
+    if (!country_code || typeof country_code !== 'string' || !country_code.trim()) {
+      return res.status(400).json({ error: "Country code is required" });
+    }
+
+    // Insert into database
+    const [result] = await pool.execute(
+      `INSERT INTO interested_signups (email, source, country_code) 
+       VALUES (?, ?, ?)`,
+      [email.trim(), source.trim(), country_code.trim()]
+    );
+
+    res.status(201).json({
+      success: true,
+      id: result.insertId,
+      message: "Signup saved successfully"
+    });
+  } catch (e) {
+    console.error("Error saving interested signup:", e);
+    
+    // Handle duplicate email if there's a unique constraint
+    if (e.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ error: "Email already exists" });
+    }
+    
     res.status(500).json({ error: "Server error: " + e.message });
   }
 });
