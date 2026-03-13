@@ -2196,6 +2196,172 @@ app.post("/admin/sections/save", requireAdmin, upload.none(), async (req, res) =
   }
 });
 
+// -------------------- Admin: Interested Signups View --------------------
+app.get("/admin/interested-signups", requireAdmin, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page || "1", 10);
+    const perPage = parseInt(req.query.per || "50", 10);
+    const offset = (page - 1) * perPage;
+
+    const search = req.query.search ? req.query.search.trim() : null;
+    const dateFrom = req.query.date_from || null;
+    const dateTo = req.query.date_to || null;
+    const filterSource = req.query.filter_source || null;
+    const filterCountry = req.query.filter_country || null;
+
+    // Build WHERE clause
+    let whereConditions = [];
+    let queryParams = [];
+
+    if (search) {
+      whereConditions.push("(email LIKE ? OR source LIKE ?)");
+      const searchPattern = `%${search}%`;
+      queryParams.push(searchPattern, searchPattern);
+    }
+
+    if (dateFrom) {
+      whereConditions.push("DATE(created_at) >= ?");
+      queryParams.push(dateFrom);
+    }
+
+    if (dateTo) {
+      whereConditions.push("DATE(created_at) <= ?");
+      queryParams.push(dateTo);
+    }
+
+    if (filterSource) {
+      whereConditions.push("source = ?");
+      queryParams.push(filterSource);
+    }
+
+    if (filterCountry) {
+      whereConditions.push("country_code = ?");
+      queryParams.push(filterCountry);
+    }
+
+    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(" AND ")}` : "";
+
+    // Get total count
+    const [countResult] = await pool.query(
+      `SELECT COUNT(*) as total FROM interested_signups ${whereClause}`,
+      queryParams
+    );
+    const total = countResult[0]?.total || 0;
+
+    // Get paginated results
+    const [rows] = await pool.query(
+      `SELECT id, email, source, country_code, created_at 
+       FROM interested_signups 
+       ${whereClause}
+       ORDER BY created_at DESC 
+       LIMIT ${perPage} OFFSET ${offset}`,
+      queryParams
+    );
+
+    // Get unique sources and country codes for filters
+    const [sources] = await pool.query(
+      `SELECT DISTINCT source FROM interested_signups WHERE source IS NOT NULL ORDER BY source ASC`
+    );
+    const [countries] = await pool.query(
+      `SELECT DISTINCT country_code FROM interested_signups WHERE country_code IS NOT NULL ORDER BY country_code ASC`
+    );
+
+    const totalPages = Math.ceil(total / perPage);
+
+    res.render("admin_interested_signups", {
+      rows: rows || [],
+      total,
+      page,
+      perPage,
+      totalPages,
+      search,
+      dateFrom,
+      dateTo,
+      filterSource,
+      filterCountry,
+      sources: sources.map((s) => s.source),
+      countries: countries.map((c) => c.country_code),
+      query: req.query,
+    });
+  } catch (e) {
+    console.error("Error loading interested signups:", e);
+    res.status(500).send("Server error: " + e.message);
+  }
+});
+
+// -------------------- Admin: Interested Signups CSV Export --------------------
+app.get("/admin/interested-signups.csv", requireAdmin, async (req, res) => {
+  try {
+    const search = req.query.search ? req.query.search.trim() : null;
+    const dateFrom = req.query.date_from || null;
+    const dateTo = req.query.date_to || null;
+    const filterSource = req.query.filter_source || null;
+    const filterCountry = req.query.filter_country || null;
+
+    // Build WHERE clause (same as view route)
+    let whereConditions = [];
+    let queryParams = [];
+
+    if (search) {
+      whereConditions.push("(email LIKE ? OR source LIKE ?)");
+      const searchPattern = `%${search}%`;
+      queryParams.push(searchPattern, searchPattern);
+    }
+
+    if (dateFrom) {
+      whereConditions.push("DATE(created_at) >= ?");
+      queryParams.push(dateFrom);
+    }
+
+    if (dateTo) {
+      whereConditions.push("DATE(created_at) <= ?");
+      queryParams.push(dateTo);
+    }
+
+    if (filterSource) {
+      whereConditions.push("source = ?");
+      queryParams.push(filterSource);
+    }
+
+    if (filterCountry) {
+      whereConditions.push("country_code = ?");
+      queryParams.push(filterCountry);
+    }
+
+    const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(" AND ")}` : "";
+
+    const [rows] = await pool.query(
+      `SELECT id, email, source, country_code, created_at 
+       FROM interested_signups 
+       ${whereClause}
+       ORDER BY created_at DESC`,
+      queryParams
+    );
+
+    // Generate CSV
+    const headers = ["ID", "Email", "Source", "Country Code", "Created At"];
+    const csvRows = [headers.join(",")];
+
+    for (const row of rows) {
+      const csvRow = [
+        row.id,
+        `"${(row.email || "").replace(/"/g, '""')}"`,
+        `"${(row.source || "").replace(/"/g, '""')}"`,
+        `"${(row.country_code || "").replace(/"/g, '""')}"`,
+        row.created_at ? new Date(row.created_at).toISOString() : "",
+      ];
+      csvRows.push(csvRow.join(","));
+    }
+
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="interested-signups-${new Date().toISOString().split("T")[0]}.csv"`);
+    res.send(csvRows.join("\n"));
+  } catch (e) {
+    console.error("Error exporting interested signups CSV:", e);
+    res.status(500).send("Server error: " + e.message);
+  }
+});
+
 // -------------------- API: Interested Signups --------------------
 // POST /api/interested-signups
 // Body: { email, source, country_code }
