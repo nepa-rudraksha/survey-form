@@ -1413,7 +1413,18 @@ app.get("/admin/forms/:id/edit", requireAdmin, async (req, res) => {
 app.post("/admin/forms/save", requireAdmin, async (req, res) => {
   const formId = req.body.form_id && req.body.form_id !== "" ? parseInt(req.body.form_id, 10) : null;
   const title = String(req.body.title || "").trim();
-  const description = String(req.body.description || "").trim();
+  let description = String(req.body.description || "").trim();
+  // If Quill submits "empty" HTML like <p><br></p>, store NULL so UI conditionals work.
+  if (description) {
+    const stripped = description
+      .replace(/<[^>]*>/g, "")
+      .replace(/&nbsp;/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!stripped) description = null;
+  } else {
+    description = null;
+  }
   const slug = String(req.body.slug || "").trim() || generateSlug(title);
   const showOnHomepage = req.body.show_on_homepage === "on" ? 1 : 0;
   const status = String(req.body.status || "draft");

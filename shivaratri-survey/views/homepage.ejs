@@ -116,9 +116,9 @@
                 </h3>
                 
                 <% if (form.description) { %>
-                  <p class="text-sm text-neutral-600 line-clamp-3 leading-relaxed mb-4">
-                    <%= form.description %>
-                  </p>
+                  <div class="text-sm text-neutral-600 line-clamp-3 leading-relaxed mb-4">
+                    <%- form.description %>
+                  </div>
                 <% } else { %>
                   <p class="text-sm text-neutral-500 italic mb-4">
                     Click to fill out this form
