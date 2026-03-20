@@ -358,6 +358,11 @@ async function validateDynamicForm(body, fields) {
         if (isNaN(value)) errors[fieldKey] = "Please enter a valid number.";
       } else if (field.field_type === "date") {
         if (isNaN(Date.parse(value))) errors[fieldKey] = "Please enter a valid date.";
+      } else if (field.field_type === "scale") {
+        const allowed = new Set(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]);
+        if (!allowed.has(value)) {
+          errors[fieldKey] = "Please choose a value from 0 to 10.";
+        }
       }
     }
   }
@@ -424,6 +429,7 @@ async function createFormResponseTable(formId, fields) {
         break;
       case "dropdown":
       case "radio":
+      case "scale":
         // For single select, store as VARCHAR
         columnDef = `\`${fieldKey}\` VARCHAR(255) NULL`;
         break;
@@ -1329,6 +1335,7 @@ app.post("/admin/forms/save", requireAdmin, async (req, res) => {
                 break;
               case "dropdown":
               case "radio":
+              case "scale":
                 alterSql = `ALTER TABLE \`${tableName}\` ADD COLUMN \`${field.field_key}\` VARCHAR(255) NULL`;
                 break;
               case "checkbox":
@@ -1434,7 +1441,7 @@ app.get("/admin/forms/:id/responses", requireAdmin, async (req, res) => {
     
     // Field-specific filters
     for (const field of fields) {
-      if (["dropdown", "radio"].includes(field.field_type)) {
+      if (["dropdown", "radio", "scale"].includes(field.field_type)) {
         const filterValue = String(pickOne(req.query[`filter_${field.field_key}`]) || "").trim();
         if (filterValue) {
           whereConditions.push(`\`${field.field_key}\` = ?`);
@@ -1498,6 +1505,8 @@ app.get("/admin/forms/:id/responses", requireAdmin, async (req, res) => {
           console.error(`Error getting filter options for ${field.field_key}:`, e);
           filterOptions[field.field_key] = [];
         }
+      } else if (field.field_type === "scale") {
+        filterOptions[field.field_key] = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"];
       }
     }
 
@@ -1840,13 +1849,19 @@ app.get("/admin/forms/:id/report", requireAdmin, async (req, res) => {
         whereClause = dateWhereClause + ` AND \`${fieldKey}\` IS NOT NULL`;
       }
 
+      const orderSql =
+        field.field_type === "scale"
+          ? `ORDER BY CAST(\`${fieldKey}\` AS UNSIGNED) ASC`
+          : "ORDER BY c DESC";
+      const limitSql = field.field_type === "scale" ? "" : "LIMIT 20";
+
       const [rows] = await pool.query(
         `SELECT \`${fieldKey}\` AS k, COUNT(*) AS c
          FROM \`${tableName}\`
          ${whereClause}
          GROUP BY \`${fieldKey}\`
-         ORDER BY c DESC
-         LIMIT 20`,
+         ${orderSql}
+         ${limitSql}`,
         queryParams
       );
 
@@ -1872,7 +1887,7 @@ app.get("/admin/forms/:id/report", requireAdmin, async (req, res) => {
     // Get field statistics for dropdown/radio fields
     const fieldStats = {};
     for (const field of fields) {
-      if (["dropdown", "radio", "checkbox"].includes(field.field_type)) {
+      if (["dropdown", "radio", "checkbox", "scale"].includes(field.field_type)) {
         fieldStats[field.field_key] = await groupCount(field.field_key);
       }
     }

@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS form_fields (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   form_id BIGINT UNSIGNED NOT NULL,
   field_key VARCHAR(100) NOT NULL,
-  field_type ENUM('text', 'textarea', 'number', 'phone', 'email', 'dropdown', 'radio', 'checkbox', 'date', 'file', 'consent') NOT NULL,
+  field_type ENUM('text', 'textarea', 'number', 'phone', 'email', 'dropdown', 'radio', 'scale', 'checkbox', 'date', 'file', 'consent') NOT NULL,
   label VARCHAR(255) NOT NULL,
   placeholder VARCHAR(255) NULL,
   required TINYINT(1) NOT NULL DEFAULT 0,

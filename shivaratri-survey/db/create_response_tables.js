@@ -55,6 +55,7 @@ async function createFormResponseTable(formId, fields) {
         break;
       case "dropdown":
       case "radio":
+      case "scale":
         columnDef = `\`${fieldKey}\` VARCHAR(255) NULL`;
         break;
       case "checkbox":
