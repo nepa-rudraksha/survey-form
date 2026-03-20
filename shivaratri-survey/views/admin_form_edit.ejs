@@ -181,12 +181,60 @@
     // Convert label to snake_case field key
     function labelToFieldKey(label) {
       if (!label) return '';
-      return String(label)
+      const rawKey = String(label)
         .toLowerCase()
         .trim()
         .replace(/[^\w\s-]/g, '') // Remove special characters
         .replace(/[\s_-]+/g, '_') // Replace spaces, hyphens, underscores with single underscore
         .replace(/^_+|_+$/g, ''); // Remove leading/trailing underscores
+
+      // MySQL `form_fields.field_key` is VARCHAR(100). Truncate deterministically to avoid "Data too long" errors.
+      const maxLen = 100;
+      if (!rawKey) return '';
+      if (rawKey.length <= maxLen) return rawKey;
+
+      // Small non-crypto hash (stable) to reduce collision chance after truncation.
+      function hashString(s) {
+        let h = 2166136261;
+        for (let i = 0; i < s.length; i++) {
+          h ^= s.charCodeAt(i);
+          h = Math.imul(h, 16777619);
+        }
+        return (h >>> 0).toString(36);
+      }
+
+      const suffix = '_' + hashString(rawKey).slice(0, 6);
+      const head = rawKey.slice(0, maxLen - suffix.length).replace(/_+$/g, '');
+      return head + suffix;
+    }
+
+    function hashStringShort(s) {
+      // Non-crypto stable hash for unique suffixing.
+      let h = 0;
+      const str = String(s || '');
+      for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
+      return h.toString(36);
+    }
+
+    function getUsedFieldKeys(excludeFieldId) {
+      const excludeInputId = excludeFieldId ? `field_key_${excludeFieldId}` : null;
+      return Array.from(document.querySelectorAll('[id^="field_key_"]'))
+        .filter((el) => !excludeInputId || el.id !== excludeInputId)
+        .map((el) => String(el.value || '').trim())
+        .filter(Boolean);
+    }
+
+    function makeUniqueFieldKey(proposedKey, fieldId) {
+      const key = String(proposedKey || '').trim();
+      if (!key) return key;
+
+      const used = new Set(getUsedFieldKeys(fieldId));
+      if (!used.has(key)) return key;
+
+      const maxLen = 100;
+      const suffix = '_' + hashStringShort(fieldId).slice(0, 6);
+      const base = key.slice(0, maxLen - suffix.length).replace(/_+$/g, '');
+      return base + suffix;
     }
 
     function generateSectionId() {
@@ -247,16 +295,84 @@
       `;
 
       container.appendChild(sectionDiv);
+      refreshFieldAssignSectionSelects();
     }
 
     function removeSection(sectionId) {
       const section = document.querySelector(`[data-section-id="${sectionId}"]`);
-      if (section && confirm('Remove this section and all its fields?')) {
+      if (!section) return;
+
+      if (confirm('Remove this section? Fields inside will be moved to "No section".')) {
+        const fieldsContainer = document.getElementById('fieldsWithoutSectionContainer');
+        const fieldEls = section.querySelectorAll('[data-field-id]');
+
+        fieldEls.forEach((fieldEl) => {
+          fieldEl.removeAttribute('data-section-id');
+          fieldsContainer.appendChild(fieldEl);
+        });
+
         section.remove();
+        refreshFieldAssignSectionSelects();
       }
     }
 
     let draggedFieldId = null;
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function getSectionOptionsHtml(selectedSectionId) {
+      const sectionDivs = document.querySelectorAll('#sectionsContainer [data-section-id]');
+      const options = [
+        `<option value="" ${!selectedSectionId ? 'selected' : ''}>No section</option>`,
+      ];
+
+      sectionDivs.forEach((div) => {
+        const sid = div.dataset.sectionId;
+        const titleEl = document.querySelector('input[name="section_title_' + sid + '"]');
+        const title = titleEl ? String(titleEl.value || '').trim() : '';
+        const label = title || sid;
+        options.push(
+          `<option value="${escapeHtml(sid)}" ${String(selectedSectionId || '') === String(sid) ? 'selected' : ''}>${escapeHtml(label)}</option>`
+        );
+      });
+
+      return options.join('');
+    }
+
+    function refreshFieldAssignSectionSelects() {
+      document.querySelectorAll('.field-assign-section-select').forEach((sel) => {
+        const fieldId = sel.dataset.fieldId || '';
+        const fieldEl = fieldId ? document.querySelector('[data-field-id="' + fieldId + '"]') : null;
+        const curSectionId = fieldEl ? (fieldEl.dataset.sectionId || '') : '';
+        sel.innerHTML = getSectionOptionsHtml(curSectionId);
+      });
+    }
+
+    function assignFieldToSection(fieldId, targetSectionTempId) {
+      const field = document.querySelector('[data-field-id="' + fieldId + '"]');
+      if (!field) return;
+
+      if (!targetSectionTempId) {
+        field.removeAttribute('data-section-id');
+        const container = document.getElementById('fieldsWithoutSectionContainer');
+        container.appendChild(field);
+      } else {
+        field.dataset.sectionId = targetSectionTempId;
+        const container = document.getElementById('fields_' + targetSectionTempId);
+        if (container) container.appendChild(field);
+      }
+
+      requestAnimationFrame(function () {
+        field.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    }
 
     function onFieldHandleDragStart(e, fieldId) {
       draggedFieldId = fieldId;
@@ -346,9 +462,13 @@
         fieldDiv.dataset.sectionId = sectionId;
       }
 
-      // Generate field key from label if not provided, but preserve existing keys
-      const autoFieldKey = field.field_key || (field.label ? labelToFieldKey(field.label) : 'field_' + fieldId);
+      // Preserve existing field keys as-is; only generate unique keys for new fields.
+      // Otherwise, every admin edit can "rename" fields, which creates new DB columns/keys over time.
       const isExistingField = !!field.field_key; // Track if this is an existing field
+      let autoFieldKey = field.field_key || (field.label ? labelToFieldKey(field.label) : 'field_' + fieldId);
+      if (!isExistingField) {
+        autoFieldKey = makeUniqueFieldKey(autoFieldKey, fieldId);
+      }
       
       fieldDiv.innerHTML = `
         <div class="flex items-start justify-between mb-3 gap-2">
@@ -369,8 +489,14 @@
             </span>
             <h3 class="text-sm font-semibold text-neutral-900">Field</h3>
           </div>
-          <div class="flex shrink-0 gap-2">
-            ${sectionId ? `<button type="button" onclick="moveFieldToNoSection('${fieldId}')" class="text-xs text-neutral-600 hover:text-neutral-900">Move out</button>` : ''}
+          <div class="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
+            <select
+              class="field-assign-section-select w-full min-w-[10rem] rounded-lg border border-neutral-300 bg-white px-2 py-1 text-xs font-semibold"
+              data-field-id="${fieldId}"
+              onchange="assignFieldToSection('${fieldId}', this.value)"
+            >
+              ${getSectionOptionsHtml(sectionId || '')}
+            </select>
             <button
               type="button"
               onclick="removeField('${fieldId}')"
@@ -519,7 +645,7 @@
       // Only auto-update for new fields (not existing ones)
       // For existing fields, preserve the original field_key
       if (!isExisting) {
-        fieldKeyInput.value = autoKey;
+        fieldKeyInput.value = makeUniqueFieldKey(autoKey, fieldId);
         fieldKeyInput.dataset.originalLabel = label;
       }
       
@@ -611,7 +737,8 @@
 
       // Collect all fields
       const fieldContainers = document.querySelectorAll('[data-field-id]');
-      fieldContainers.forEach(container => {
+      const fieldByKey = new Map(); // field_key -> { fieldObj, order }
+      fieldContainers.forEach((container, order) => {
         const fieldId = container.dataset.fieldId;
         const sectionId = container.dataset.sectionId;
         const fieldKey = formData.get(`field_key_${fieldId}`);
@@ -637,7 +764,7 @@
         }
 
         if (fieldKey && label) {
-          fieldsData.push({
+          const fieldObj = {
             temp_id: fieldId,
             section_id: sectionId || null,
             field_key: fieldKey,
@@ -646,9 +773,37 @@
             placeholder: placeholder || null,
             required: required,
             options: options.length > 0 ? options : null,
-          });
+          };
+
+          const existing = fieldByKey.get(fieldKey);
+          if (!existing) {
+            fieldByKey.set(fieldKey, { fieldObj, order });
+            return;
+          }
+
+          // Prefer the entry that currently belongs to a section (non-null section_id).
+          const existingSectionId = existing.fieldObj.section_id;
+          const newSectionId = fieldObj.section_id;
+          const existingHasSection = existingSectionId !== null && existingSectionId !== undefined && String(existingSectionId) !== '';
+          const newHasSection = newSectionId !== null && newSectionId !== undefined && String(newSectionId) !== '';
+
+          if (!existingHasSection && newHasSection) {
+            fieldByKey.set(fieldKey, { fieldObj, order });
+            return;
+          }
+
+          // If both have the same section presence, keep the later one (DOM order).
+          if (existingHasSection === newHasSection && order >= existing.order) {
+            fieldByKey.set(fieldKey, { fieldObj, order });
+          }
         }
       });
+
+      // Replace payload fields with deduped version (prevents "same field duplicated w/o section").
+      fieldsData.length = 0;
+      Array.from(fieldByKey.values())
+        .sort((a, b) => a.order - b.order)
+        .forEach(({ fieldObj }) => fieldsData.push(fieldObj));
 
       const payload = {
         form_id: formData.get('form_id') || null,

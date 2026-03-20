@@ -40,10 +40,10 @@
     </header>
 
     <main class="mx-auto w-full max-w-4xl px-4 py-8 pb-[calc(env(safe-area-inset-bottom)+7rem)]">
-      <div class="w-full max-w-full rounded-2xl border border-neutral-200 bg-white shadow-sm overflow-hidden">
+      <div class="w-full max-w-full bg-white overflow-hidden">
         <div class="p-5 md:p-8">
           <!-- MODE TOGGLE -->
-          <div class="mt-8 flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-neutral-50 p-4 md:flex-row md:items-center md:justify-between">
+          <div class="mt-8 flex flex-col gap-3 bg-neutral-50 p-4 md:flex-row md:items-center md:justify-between">
             <div class="min-w-0">
               <p class="text-sm font-semibold text-neutral-900">
                 <%= pageMode === 'edit' ? 'Update your response' : 'Form layout' %>
@@ -74,7 +74,23 @@
             </div>
           </div>
 
-          <form action="<%= pageMode === 'edit' ? ('/forms/' + form.slug + '/update/' + editKey) : ('/forms/' + form.slug + '/submit') %>" method="POST" class="mt-8 space-y-10" id="surveyForm">
+          <%
+            function otherTextKeyFor(fieldKey) {
+              const oldKey = fieldKey + '_other_text';
+              if (oldKey.length <= 64) return oldKey;
+              const s = String(fieldKey || '');
+              let h = 2166136261;
+              for (let i = 0; i < s.length; i++) {
+                h ^= s.charCodeAt(i);
+                h = Math.imul(h, 16777619);
+              }
+              const hash = (h >>> 0).toString(36).slice(0, 10);
+              const head = s.slice(0, 50).replace(/_+$/g, '');
+              return head + '_ot_' + hash;
+            }
+          %>
+
+          <form action="<%= pageMode === 'edit' ? ('/forms/' + form.slug + '/update/' + editKey) : ('/forms/' + form.slug + '/submit') %>" method="POST" class="mt-8 space-y-6" id="surveyForm">
             <input type="hidden" name="utm_source" id="utm_source" value="" />
             <input type="hidden" name="utm_medium" id="utm_medium" value="" />
             <input type="hidden" name="utm_campaign" id="utm_campaign" value="" />
@@ -113,16 +129,18 @@
                   <p class="mt-2 text-sm text-neutral-600"><%= section.description %></p>
                 <% } %>
 
-                <div class="mt-4 grid gap-4 md:grid-cols-2">
+                <div class="mt-4 grid gap-4">
                   <% 
                     if (sectionFields.length > 0) {
                       sectionFields.forEach(function(field) {
                         const fieldValue = values[field.field_key] || '';
                         const fieldOptions = field.options ? (typeof field.options === 'string' ? JSON.parse(field.options) : field.options) : [];
+                        const otherTextKey = otherTextKeyFor(field.field_key);
+                        const otherTextValue = values[otherTextKey] || '';
                         const isFullWidth = ['textarea', 'checkbox', 'scale'].includes(field.field_type);
                   %>
-                    <div class="<%= isFullWidth ? 'md:col-span-2' : '' %>">
-                      <label class="block text-sm font-medium text-neutral-800">
+                    <div class="w-full rounded-2xl border border-neutral-200 bg-white p-4">
+                      <label class="block text-sm font-semibold text-neutral-800 mb-2">
                         <%= field.label %>
                         <% if (field.required) { %><span class="text-red-500">*</span><% } %>
                       </label>
@@ -172,18 +190,48 @@
 
                       <% } else if (field.field_type === 'radio') { %>
                         <div class="mt-2 space-y-2">
-                          <% fieldOptions.forEach(function(opt) { %>
-                            <label class="flex items-center gap-3 rounded-xl border border-neutral-200 bg-white p-3">
+                          <% fieldOptions.forEach(function(opt) {
+                            const optValue = opt.value || opt;
+                            const optLabel = opt.label || opt;
+                            const isOther = String(optValue || "")
+                              .toLowerCase()
+                              .trim()
+                              .replace(/[^a-z]/g, "") === "other"
+                              || String(optLabel || "")
+                                .toLowerCase()
+                                .trim()
+                                .replace(/[^a-z]/g, "") === "other";
+                          %>
+                            <label class="flex items-start gap-3 px-3 py-2 rounded-lg hover:bg-neutral-50 transition-colors">
                               <input
                                 type="radio"
                                 name="<%= field.field_key %>"
-                                value="<%= opt.value || opt %>"
-                                <% if (fieldValue === (opt.value || opt)) { %>checked<% } %>
+                                value="<%= optValue %>"
+                                <% if (String(fieldValue) === String(optValue)) { %>checked<% } %>
                                 <% if (field.required) { %>required<% } %>
+                                <% if (isOther) { %>data-other-option="1"<% } %>
                                 class="accent-primary"
                               />
-                              <span class="text-sm text-neutral-800"><%= opt.label || opt %></span>
+                              <span class="text-sm text-neutral-800"><%= optLabel %></span>
                             </label>
+
+                            <% if (isOther) { %>
+                              <div
+                                class="mt-2 ml-3 <%= String(fieldValue) === String(optValue) ? '' : 'hidden' %>"
+                                data-other-field-key="<%= field.field_key %>"
+                              >
+                                <input
+                                  type="text"
+                                  name="<%= otherTextKey %>"
+                                  value="<%= otherTextValue %>"
+                                  placeholder="Please specify"
+                                  class="w-full rounded-xl border <%= errors[otherTextKey] ? 'border-red-300' : 'border-neutral-300' %> bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15"
+                                />
+                                <% if (errors[otherTextKey]) { %>
+                                  <p class="mt-2 text-sm text-red-600"><%= errors[otherTextKey] %></p>
+                                <% } %>
+                              </div>
+                            <% } %>
                           <% }); %>
                         </div>
                         <% if (errors[field.field_key]) { %>
@@ -191,7 +239,7 @@
                         <% } %>
 
                       <% } else if (field.field_type === 'scale') { %>
-                        <div class="mt-3 w-full overflow-x-auto rounded-xl border border-neutral-200 bg-white px-2 py-4 sm:px-4">
+                        <div class="mt-3 w-full overflow-x-auto rounded-xl border border-neutral-200 bg-white px-2 py-3 sm:px-4">
                           <div class="mx-auto flex min-w-[min(100%,20rem)] max-w-3xl items-center gap-1.5 sm:gap-3" role="radiogroup" aria-label="<%= field.label %>">
                             <span class="shrink-0 text-xs font-medium text-neutral-600 sm:text-sm">0%</span>
                             <div class="min-w-0 flex-1">
@@ -226,22 +274,49 @@
 
                       <% } else if (field.field_type === 'checkbox') { %>
                         <div class="mt-2 space-y-2">
-                          <% fieldOptions.forEach(function(opt) { %>
-                            <% 
-                              const optValue = opt.value || opt;
-                              const checkedValues = Array.isArray(fieldValue) ? fieldValue : (fieldValue ? [fieldValue] : []);
-                              const isChecked = checkedValues.includes(optValue);
-                            %>
-                            <label class="flex items-center gap-3 rounded-xl border border-neutral-200 bg-white p-3">
+                          <% fieldOptions.forEach(function(opt) {
+                            const optValue = opt.value || opt;
+                            const optLabel = opt.label || opt;
+                            const isOther = String(optValue || "")
+                              .toLowerCase()
+                              .trim()
+                              .replace(/[^a-z]/g, "") === "other"
+                              || String(optLabel || "")
+                                .toLowerCase()
+                                .trim()
+                                .replace(/[^a-z]/g, "") === "other";
+                            const checkedValues = Array.isArray(fieldValue) ? fieldValue : (fieldValue ? [fieldValue] : []);
+                            const isChecked = checkedValues.includes(optValue);
+                          %>
+                            <label class="flex items-start gap-3 px-3 py-2 rounded-lg hover:bg-neutral-50 transition-colors">
                               <input
                                 type="checkbox"
                                 name="<%= field.field_key %>"
                                 value="<%= optValue %>"
                                 <% if (isChecked) { %>checked<% } %>
+                                <% if (isOther) { %>data-other-option="1"<% } %>
                                 class="accent-primary"
                               />
-                              <span class="text-sm text-neutral-800"><%= opt.label || opt %></span>
+                              <span class="text-sm text-neutral-800"><%= optLabel %></span>
                             </label>
+
+                            <% if (isOther) { %>
+                              <div
+                                class="mt-2 ml-3 <%= isChecked ? '' : 'hidden' %>"
+                                data-other-field-key="<%= field.field_key %>"
+                              >
+                                <input
+                                  type="text"
+                                  name="<%= otherTextKey %>"
+                                  value="<%= otherTextValue %>"
+                                  placeholder="Please specify"
+                                  class="w-full rounded-xl border <%= errors[otherTextKey] ? 'border-red-300' : 'border-neutral-300' %> bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15"
+                                />
+                                <% if (errors[otherTextKey]) { %>
+                                  <p class="mt-2 text-sm text-red-600"><%= errors[otherTextKey] %></p>
+                                <% } %>
+                              </div>
+                            <% } %>
                           <% }); %>
                         </div>
                         <% if (errors[field.field_key]) { %>
@@ -312,10 +387,12 @@
                       const field = fieldsWithoutSection[i];
                       const fieldValue = values[field.field_key] || '';
                       const fieldOptions = field.options ? (typeof field.options === 'string' ? JSON.parse(field.options) : field.options) : [];
+                      const otherTextKey = otherTextKeyFor(field.field_key);
+                      const otherTextValue = values[otherTextKey] || '';
                       const isFullWidth = ['textarea', 'checkbox', 'scale'].includes(field.field_type);
                   %>
-                    <div class="<%= isFullWidth ? 'md:col-span-2' : '' %>">
-                      <label class="block text-sm font-medium text-neutral-800">
+                    <div class="w-full rounded-2xl border border-neutral-200 bg-white p-4">
+                      <label class="block text-sm font-semibold text-neutral-800 mb-2">
                         <%= field.label %>
                         <% if (field.required) { %><span class="text-red-500">*</span><% } %>
                       </label>
@@ -365,18 +442,49 @@
 
                       <% } else if (field.field_type === 'radio') { %>
                         <div class="mt-2 space-y-2">
-                          <% fieldOptions.forEach(function(opt) { %>
+                          <% fieldOptions.forEach(function(opt) {
+                            const optValue = opt.value || opt;
+                            const optLabel = opt.label || opt;
+                            const isOther =
+                              String(optValue || "")
+                                .toLowerCase()
+                                .trim()
+                                .replace(/[^a-z]/g, "") === "other"
+                              || String(optLabel || "")
+                                .toLowerCase()
+                                .trim()
+                                .replace(/[^a-z]/g, "") === "other";
+                          %>
                             <label class="flex items-center gap-3 rounded-xl border border-neutral-200 bg-white p-3">
                               <input
                                 type="radio"
                                 name="<%= field.field_key %>"
-                                value="<%= opt.value || opt %>"
-                                <% if (fieldValue === (opt.value || opt)) { %>checked<% } %>
+                                value="<%= optValue %>"
+                                <% if (String(fieldValue) === String(optValue)) { %>checked<% } %>
                                 <% if (field.required) { %>required<% } %>
+                                <% if (isOther) { %>data-other-option="1"<% } %>
                                 class="accent-primary"
                               />
-                              <span class="text-sm text-neutral-800"><%= opt.label || opt %></span>
+                              <span class="text-sm text-neutral-800"><%= optLabel %></span>
                             </label>
+
+                            <% if (isOther) { %>
+                              <div
+                                class="mt-2 ml-3 <%= String(fieldValue) === String(optValue) ? '' : 'hidden' %>"
+                                data-other-field-key="<%= field.field_key %>"
+                              >
+                                <input
+                                  type="text"
+                                  name="<%= otherTextKey %>"
+                                  value="<%= otherTextValue %>"
+                                  placeholder="Please specify"
+                                  class="w-full rounded-xl border <%= errors[otherTextKey] ? 'border-red-300' : 'border-neutral-300' %> bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15"
+                                />
+                                <% if (errors[otherTextKey]) { %>
+                                  <p class="mt-2 text-sm text-red-600"><%= errors[otherTextKey] %></p>
+                                <% } %>
+                              </div>
+                            <% } %>
                           <% }); %>
                         </div>
                         <% if (errors[field.field_key]) { %>
@@ -384,7 +492,7 @@
                         <% } %>
 
                       <% } else if (field.field_type === 'scale') { %>
-                        <div class="mt-3 w-full overflow-x-auto rounded-xl border border-neutral-200 bg-white px-2 py-4 sm:px-4">
+                        <div class="mt-3 w-full overflow-x-auto rounded-xl border border-neutral-200 bg-white px-2 py-3 sm:px-4">
                           <div class="mx-auto flex min-w-[min(100%,20rem)] max-w-3xl items-center gap-1.5 sm:gap-3" role="radiogroup" aria-label="<%= field.label %>">
                             <span class="shrink-0 text-xs font-medium text-neutral-600 sm:text-sm">0%</span>
                             <div class="min-w-0 flex-1">
@@ -419,22 +527,50 @@
 
                       <% } else if (field.field_type === 'checkbox') { %>
                         <div class="mt-2 space-y-2">
-                          <% fieldOptions.forEach(function(opt) { %>
-                            <% 
-                              const optValue = opt.value || opt;
-                              const checkedValues = Array.isArray(fieldValue) ? fieldValue : (fieldValue ? [fieldValue] : []);
-                              const isChecked = checkedValues.includes(optValue);
-                            %>
-                            <label class="flex items-center gap-3 rounded-xl border border-neutral-200 bg-white p-3">
+                          <% fieldOptions.forEach(function(opt) {
+                            const optValue = opt.value || opt;
+                            const optLabel = opt.label || opt;
+                            const isOther =
+                              String(optValue || "")
+                                .toLowerCase()
+                                .trim()
+                                .replace(/[^a-z]/g, "") === "other"
+                              || String(optLabel || "")
+                                .toLowerCase()
+                                .trim()
+                                .replace(/[^a-z]/g, "") === "other";
+                            const checkedValues = Array.isArray(fieldValue) ? fieldValue : (fieldValue ? [fieldValue] : []);
+                            const isChecked = checkedValues.includes(optValue);
+                          %>
+                            <label class="flex items-start gap-3 px-3 py-2 rounded-lg hover:bg-neutral-50 transition-colors">
                               <input
                                 type="checkbox"
                                 name="<%= field.field_key %>"
                                 value="<%= optValue %>"
                                 <% if (isChecked) { %>checked<% } %>
+                                <% if (isOther) { %>data-other-option="1"<% } %>
                                 class="accent-primary"
                               />
-                              <span class="text-sm text-neutral-800"><%= opt.label || opt %></span>
+                              <span class="text-sm text-neutral-800"><%= optLabel %></span>
                             </label>
+
+                            <% if (isOther) { %>
+                              <div
+                                class="mt-2 ml-3 <%= isChecked ? '' : 'hidden' %>"
+                                data-other-field-key="<%= field.field_key %>"
+                              >
+                                <input
+                                  type="text"
+                                  name="<%= otherTextKey %>"
+                                  value="<%= otherTextValue %>"
+                                  placeholder="Please specify"
+                                  class="w-full rounded-xl border <%= errors[otherTextKey] ? 'border-red-300' : 'border-neutral-300' %> bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15"
+                                />
+                                <% if (errors[otherTextKey]) { %>
+                                  <p class="mt-2 text-sm text-red-600"><%= errors[otherTextKey] %></p>
+                                <% } %>
+                              </div>
+                            <% } %>
                           <% }); %>
                         </div>
                         <% if (errors[field.field_key]) { %>
@@ -454,7 +590,7 @@
                         <% } %>
 
                       <% } else if (field.field_type === 'consent') { %>
-                        <label class="flex items-start gap-3 rounded-xl border border-neutral-200 bg-white p-4 mt-2">
+                        <label class="flex items-start gap-3 mt-2">
                           <input
                             type="checkbox"
                             name="<%= field.field_key %>"
@@ -658,7 +794,7 @@
             showSingle();
             return;
           }
-          const savedMode = localStorage.getItem(STORAGE_MODE) || "wizard";
+          const savedMode = localStorage.getItem(STORAGE_MODE) || "single";
           if (savedMode === "single") {
             showSingle();
           } else {
@@ -667,6 +803,32 @@
             showWizard(step);
           }
         })();
+
+        function setupOtherTextToggles() {
+          const wrappers = Array.from(document.querySelectorAll("[data-other-field-key]"));
+          wrappers.forEach((wrapper) => {
+            const fieldKey = wrapper.dataset.otherFieldKey;
+            if (!fieldKey) return;
+
+            const otherInput = document.querySelector(
+              'input[name="' + fieldKey + '"][data-other-option="1"]'
+            );
+
+            const update = () => {
+              const shouldShow = !!(otherInput && otherInput.checked);
+              wrapper.classList.toggle("hidden", !shouldShow);
+            };
+
+            // Radios + checkboxes both dispatch `change` on the input that was toggled.
+            document.querySelectorAll('input[name="' + fieldKey + '"]').forEach((inp) => {
+              inp.addEventListener("change", update);
+            });
+
+            update();
+          });
+        }
+
+        setupOtherTextToggles();
       });
     </script>
 

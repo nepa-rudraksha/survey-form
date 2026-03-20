@@ -349,6 +349,35 @@ async function validateDynamicForm(body, fields) {
       }
     }
 
+    // "Other" option free-text support for radio/checkbox.
+    if (["radio", "checkbox"].includes(field.field_type) && fieldHasOtherOption(field)) {
+      const otherTextKey = getOtherTextKey(fieldKey);
+      const otherValuesLower = getOtherOptionValuesLower(field);
+      const otherText = String(body[otherTextKey] || "").trim();
+
+      let otherSelected = false;
+      function otherComparable(s) {
+        return String(s || "")
+          .toLowerCase()
+          .trim()
+          .replace(/[^a-z]/g, "");
+      }
+      if (field.field_type === "checkbox") {
+        otherSelected = Array.isArray(value) && value.some(v => otherValuesLower.includes(otherComparable(v)));
+      } else {
+        otherSelected = otherValuesLower.includes(otherComparable(value));
+      }
+
+      if (otherSelected) {
+        if (!otherText) {
+          errors[otherTextKey] = `Please specify your ${field.label} response.`;
+        }
+        values[otherTextKey] = otherText;
+      } else {
+        values[otherTextKey] = "";
+      }
+    }
+
     // Type-specific validation
     if (value && value.length > 0) {
       if (field.field_type === "email") {
@@ -378,6 +407,65 @@ function parseFieldOptions(options) {
   } catch {
     return [];
   }
+}
+
+function getOptionPrimitiveValue(opt) {
+  if (opt && typeof opt === "object") return opt.value ?? opt.label ?? "";
+  return opt;
+}
+
+function getOptionPrimitiveLabel(opt) {
+  if (opt && typeof opt === "object") return opt.label ?? opt.value ?? "";
+  return opt;
+}
+
+function otherComparable(s) {
+  return String(s || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z]/g, "");
+}
+
+// Returns a lowercased list of option "values" that represent "Other".
+function getOtherOptionValuesLower(field) {
+  const options = parseFieldOptions(field.options);
+  const otherValues = [];
+
+  for (const opt of options) {
+    const v = String(getOptionPrimitiveValue(opt) ?? "").trim();
+    const l = String(getOptionPrimitiveLabel(opt) ?? "").trim();
+    if (!v && !l) continue;
+    if (otherComparable(v) === "other") otherValues.push(otherComparable(v));
+    if (otherComparable(l) === "other") otherValues.push(otherComparable(l));
+  }
+  // We only care that it is "other". Keep everything normalized.
+  return [...new Set(otherValues.map(x => otherComparable(x)))].filter(Boolean);
+}
+
+function fieldHasOtherOption(field) {
+  const otherValuesLower = getOtherOptionValuesLower(field);
+  return otherValuesLower.length > 0;
+}
+
+function getOtherTextKey(fieldKey) {
+  const oldKey = `${fieldKey}_other_text`;
+  // MySQL identifiers are limited to 64 characters.
+  if (oldKey.length <= 64) return oldKey;
+
+  // Shortened, deterministic key for long field keys.
+  // Keep it unique enough by including a hash.
+  function shortHash(s) {
+    let h = 2166136261;
+    for (let i = 0; i < String(s || "").length; i++) {
+      h ^= String(s).charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0).toString(36);
+  }
+
+  const hash = shortHash(fieldKey).slice(0, 10);
+  const head = String(fieldKey).slice(0, 50).replace(/_+$/g, "");
+  return `${head}_ot_${hash}`;
 }
 
 // Get table name for form responses
@@ -445,6 +533,11 @@ async function createFormResponseTable(formId, fields) {
     }
 
     sql += `,\n    ${columnDef}`;
+
+    if (["radio", "checkbox"].includes(field.field_type) && fieldHasOtherOption(field)) {
+      const otherTextKey = getOtherTextKey(fieldKey);
+      sql += `,\n    \`${otherTextKey}\` VARCHAR(255) NULL`;
+    }
   }
 
   // Add indexes at the end
@@ -595,6 +688,11 @@ app.get("/forms/:slug/edit/:key", async (req, res) => {
     } else {
       values[field.field_key] = value || "";
     }
+
+    if (["radio", "checkbox"].includes(field.field_type) && fieldHasOtherOption(field)) {
+      const otherTextKey = getOtherTextKey(field.field_key);
+      values[otherTextKey] = row[otherTextKey] || "";
+    }
   }
 
   res.render("dynamic_form", {
@@ -679,6 +777,12 @@ app.post("/forms/:slug/submit", async (req, res) => {
     } else {
       columnValues.push(value || null);
     }
+
+    if (["radio", "checkbox"].includes(field.field_type) && fieldHasOtherOption(field)) {
+      const otherTextKey = getOtherTextKey(field.field_key);
+      columns.push(`\`${otherTextKey}\``);
+      columnValues.push(values[otherTextKey] ? values[otherTextKey] : null);
+    }
   }
 
   const placeholders = columns.map(() => "?").join(", ");
@@ -754,6 +858,12 @@ app.post("/forms/:slug/update/:key", async (req, res) => {
       updateValues.push(JSON.stringify(Array.isArray(value) ? value : []));
     } else {
       updateValues.push(value || null);
+    }
+
+    if (["radio", "checkbox"].includes(field.field_type) && fieldHasOtherOption(field)) {
+      const otherTextKey = getOtherTextKey(field.field_key);
+      updateColumns.push(`\`${otherTextKey}\``);
+      updateValues.push(values[otherTextKey] ? values[otherTextKey] : null);
     }
   }
 
@@ -1186,6 +1296,28 @@ app.post("/admin/forms/save", requireAdmin, async (req, res) => {
   }
 
   try {
+    function shortHash(s) {
+      let h = 2166136261;
+      const str = String(s || "");
+      for (let i = 0; i < str.length; i++) {
+        h ^= str.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+      }
+      return (h >>> 0).toString(36);
+    }
+
+    function normalizeFieldKey(k, fallback) {
+      let key = String(k || fallback || "").trim();
+      if (!key) key = String(fallback || "field") || "field";
+
+      const maxLen = 100; // form_fields.field_key is VARCHAR(100)
+      if (key.length <= maxLen) return key;
+
+      const suffix = "_" + shortHash(key).slice(0, 6);
+      const head = key.slice(0, maxLen - suffix.length).replace(/_+$/g, "");
+      return head + suffix;
+    }
+
     let form;
     if (formId && Number.isFinite(formId)) {
       // Update existing
@@ -1211,6 +1343,41 @@ app.post("/admin/forms/save", requireAdmin, async (req, res) => {
       console.error("Error parsing fields:", e);
       fieldsData = [];
     }
+
+    // Dedupe fields by `field_key` before we touch DB.
+    // The admin UI can sometimes contain the same field more than once in the DOM
+    // (for example after moving/removing sections). Without this, we'd re-insert it
+    // again and it would look like "duplicate fields created with no section".
+    const byKey = new Map(); // field_key -> { fieldObj, order, hasSection }
+    for (let i = 0; i < fieldsData.length; i++) {
+      const f = fieldsData[i];
+      if (!f) continue;
+      const rawKey = String(f.field_key || "").trim();
+      if (!rawKey) continue;
+
+      const sectionId = f.section_id ?? null;
+      const hasSection = sectionId !== null && sectionId !== undefined && String(sectionId) !== "";
+
+      const existing = byKey.get(rawKey);
+      if (!existing) {
+        byKey.set(rawKey, { fieldObj: f, order: i, hasSection });
+        continue;
+      }
+
+      // Prefer the one that is attached to a section.
+      if (!existing.hasSection && hasSection) {
+        byKey.set(rawKey, { fieldObj: f, order: i, hasSection });
+        continue;
+      }
+
+      // If both have same section presence, keep later one.
+      if (existing.hasSection === hasSection && i >= existing.order) {
+        byKey.set(rawKey, { fieldObj: f, order: i, hasSection });
+      }
+    }
+    fieldsData = Array.from(byKey.values())
+      .sort((a, b) => a.order - b.order)
+      .map((x) => x.fieldObj);
     
     // Save sections first
     let sectionsData = [];
@@ -1233,126 +1400,154 @@ app.post("/admin/forms/save", requireAdmin, async (req, res) => {
       return true;
     });
     
-    // Delete existing sections and fields
-    await pool.execute("DELETE FROM form_fields WHERE form_id = ?", [form.id]);
-    await pool.execute("DELETE FROM form_sections WHERE form_id = ?", [form.id]);
-
-    // Insert sections
-    const sectionMap = {}; // Maps temp section IDs to real IDs
-    for (let i = 0; i < sectionsData.length; i++) {
-      const section = sectionsData[i];
-      const sectionTitle = String(section.title || "").trim() || `Section ${i + 1}`;
-      const sectionDescription = section.description ? String(section.description).trim() : null;
-      
-      const [sectionResult] = await pool.execute(
-        `INSERT INTO form_sections (form_id, title, description, display_order)
-         VALUES (?, ?, ?, ?)`,
-        [
-          form.id,
-          sectionTitle,
-          sectionDescription,
-          i,
-        ]
-      );
-      // Map temp ID to real ID
-      if (section.temp_id) {
-        sectionMap[section.temp_id] = sectionResult.insertId;
-      }
-    }
-
-    // Insert fields
+    // Save sections + fields transactionally.
+    // If anything fails (FK mismatch, duplicate keys, etc), we rollback so
+    // the user doesn't lose the previous working form definition.
+    const conn = await pool.getConnection();
     const savedFields = [];
-    for (let i = 0; i < fieldsData.length; i++) {
-      const field = fieldsData[i];
-      const sectionId = field.section_id && sectionMap[field.section_id] ? sectionMap[field.section_id] : null;
-      
-      await pool.execute(
-        `INSERT INTO form_fields (form_id, section_id, field_key, field_type, label, placeholder, required, options, validation_rules, display_order)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          form.id,
-          sectionId,
-          field.field_key || `field_${i}`,
-          field.field_type || "text",
-          field.label || "",
-          field.placeholder || null,
-          field.required ? 1 : 0,
-          field.options ? JSON.stringify(field.options) : null,
-          field.validation_rules ? JSON.stringify(field.validation_rules) : null,
-          i,
-        ]
-      );
-      savedFields.push({
-        ...field,
-        field_key: field.field_key || `field_${i}`,
-        field_type: field.field_type || "text",
-      });
+    const usedFieldKeys = new Set();
+    const sectionMap = {}; // Maps temp section IDs to real IDs
+    try {
+      await conn.beginTransaction();
+
+      // Delete existing sections and fields
+      await conn.execute("DELETE FROM form_fields WHERE form_id = ?", [form.id]);
+      await conn.execute("DELETE FROM form_sections WHERE form_id = ?", [form.id]);
+
+      // Insert sections
+      for (let i = 0; i < sectionsData.length; i++) {
+        const section = sectionsData[i];
+        const sectionTitle = String(section.title || "").trim() || `Section ${i + 1}`;
+        const sectionDescription = section.description ? String(section.description).trim() : null;
+
+        const [sectionResult] = await conn.execute(
+          `INSERT INTO form_sections (form_id, title, description, display_order)
+           VALUES (?, ?, ?, ?)`,
+          [
+            form.id,
+            sectionTitle,
+            sectionDescription,
+            i,
+          ]
+        );
+        // Map temp ID to real ID
+        if (section.temp_id) {
+          sectionMap[section.temp_id] = sectionResult.insertId;
+        }
+      }
+
+      // Insert fields
+      for (let i = 0; i < fieldsData.length; i++) {
+        const field = fieldsData[i];
+        const sectionId = field.section_id && sectionMap[field.section_id] ? sectionMap[field.section_id] : null;
+
+        // Ensure field_key uniqueness to avoid ER_DUP_ENTRY on unique_form_field_key.
+        let fieldKey = normalizeFieldKey(field.field_key || `field_${i}`, `field_${i}`);
+        while (usedFieldKeys.has(fieldKey)) {
+          const suffix = "_" + shortHash(fieldKey + "_" + i).slice(0, 6);
+          const head = fieldKey.slice(0, 100 - suffix.length).replace(/_+$/g, "");
+          fieldKey = head + suffix;
+        }
+        usedFieldKeys.add(fieldKey);
+
+        await conn.execute(
+          `INSERT INTO form_fields (form_id, section_id, field_key, field_type, label, placeholder, required, options, validation_rules, display_order)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            form.id,
+            sectionId,
+            fieldKey,
+            field.field_type || "text",
+            field.label || "",
+            field.placeholder || null,
+            field.required ? 1 : 0,
+            field.options ? JSON.stringify(field.options) : null,
+            field.validation_rules ? JSON.stringify(field.validation_rules) : null,
+            i,
+          ]
+        );
+        savedFields.push({
+          ...field,
+          field_key: fieldKey,
+          field_type: field.field_type || "text",
+        });
+      }
+
+      await conn.commit();
+    } catch (e) {
+      await conn.rollback();
+      console.error("Error saving form sections/fields, rolled back:", e.message);
+      throw e;
+    } finally {
+      conn.release();
     }
 
-    // Create or recreate the response table for this form
+    // Create or recreate the response table for this form.
+    // We fully rebuild it on edit to prevent old extra columns (from previous saves)
+    // from accumulating and hitting MySQL row-size limits.
     if (!formId || !Number.isFinite(formId)) {
       // New form - create table
       await createFormResponseTable(form.id, savedFields);
     } else {
-      // Existing form - check if table exists, if fields changed, recreate it
       const tableName = getFormResponseTableName(form.id);
+
       const [existingTable] = await pool.query(
         `SELECT COUNT(*) as count FROM information_schema.tables 
          WHERE table_schema = DATABASE() AND table_name = ?`,
         [tableName]
       );
-      
+
       if (existingTable[0].count === 0) {
-        // Table doesn't exist, create it
         await createFormResponseTable(form.id, savedFields);
       } else {
-        // Table exists - check if we need to add new columns
+        // Best-effort migration: keep any overlapping columns, then drop the old table.
+        const tempSuffix = shortHash(String(Date.now()) + "_" + Math.random()).slice(0, 8);
+        const tempTableName = `${tableName}_old_${tempSuffix}`;
+
         const [existingColumns] = await pool.query(
           `SELECT COLUMN_NAME FROM information_schema.columns 
            WHERE table_schema = DATABASE() AND table_name = ?`,
           [tableName]
         );
-        const existingColumnNames = new Set(existingColumns.map(c => c.COLUMN_NAME));
-        
-        // Add missing columns
-        for (const field of savedFields) {
-          if (!existingColumnNames.has(field.field_key)) {
-            let alterSql = "";
-            switch (field.field_type) {
-              case "text":
-              case "phone":
-              case "email":
-                alterSql = `ALTER TABLE \`${tableName}\` ADD COLUMN \`${field.field_key}\` VARCHAR(255) NULL`;
-                break;
-              case "textarea":
-                alterSql = `ALTER TABLE \`${tableName}\` ADD COLUMN \`${field.field_key}\` TEXT NULL`;
-                break;
-              case "number":
-                alterSql = `ALTER TABLE \`${tableName}\` ADD COLUMN \`${field.field_key}\` DECIMAL(20, 2) NULL`;
-                break;
-              case "date":
-                alterSql = `ALTER TABLE \`${tableName}\` ADD COLUMN \`${field.field_key}\` DATE NULL`;
-                break;
-              case "dropdown":
-              case "radio":
-              case "scale":
-                alterSql = `ALTER TABLE \`${tableName}\` ADD COLUMN \`${field.field_key}\` VARCHAR(255) NULL`;
-                break;
-              case "checkbox":
-                alterSql = `ALTER TABLE \`${tableName}\` ADD COLUMN \`${field.field_key}\` JSON NULL`;
-                break;
-              case "consent":
-                alterSql = `ALTER TABLE \`${tableName}\` ADD COLUMN \`${field.field_key}\` TINYINT(1) NULL DEFAULT 0`;
-                break;
-              default:
-                alterSql = `ALTER TABLE \`${tableName}\` ADD COLUMN \`${field.field_key}\` VARCHAR(255) NULL`;
-            }
-            try {
-              await pool.query(alterSql);
-              console.log(`Added column ${field.field_key} to ${tableName}`);
-            } catch (e) {
-              console.error(`Error adding column ${field.field_key}:`, e.message);
-            }
+        const oldColumnNames = new Set(existingColumns.map((c) => c.COLUMN_NAME));
+
+        await pool.query(`RENAME TABLE \`${tableName}\` TO \`${tempTableName}\``);
+        let migrated = false;
+        let created = false;
+        try {
+          await createFormResponseTable(form.id, savedFields);
+          created = true;
+
+          const baseColumns = [
+            "edit_key",
+            "created_at",
+            "updated_at",
+            "utm_source",
+            "utm_medium",
+            "utm_campaign",
+            "referrer",
+            "ip_address",
+            "user_agent",
+          ];
+
+          const newFieldColumns = savedFields.map((f) => f.field_key);
+          const newOtherColumns = savedFields
+            .filter((f) => ["radio", "checkbox"].includes(f.field_type) && fieldHasOtherOption(f))
+            .map((f) => getOtherTextKey(f.field_key));
+
+          const newExpectedColumns = [...baseColumns, ...newFieldColumns, ...newOtherColumns];
+          const migrateColumns = newExpectedColumns.filter((c) => oldColumnNames.has(c));
+
+          if (migrateColumns.includes("edit_key")) {
+            const colsSql = migrateColumns.map((c) => `\`${c}\``).join(", ");
+            await pool.query(
+              `INSERT INTO \`${tableName}\` (${colsSql}) SELECT ${colsSql} FROM \`${tempTableName}\``
+            );
+            migrated = true;
+          }
+        } finally {
+          if (migrated || created) {
+            await pool.query(`DROP TABLE IF EXISTS \`${tempTableName}\``);
           }
         }
       }
@@ -1479,6 +1674,28 @@ app.get("/admin/forms/:id/responses", requireAdmin, async (req, res) => {
             value = [];
           }
         }
+
+        // Resolve "Other" free-text for admin display (does not affect filtering because SQL still uses raw stored values).
+        if (["radio", "checkbox"].includes(field.field_type) && fieldHasOtherOption(field)) {
+          const otherValuesLower = getOtherOptionValuesLower(field);
+          const otherTextKey = getOtherTextKey(field.field_key);
+          const otherTextValue = row[otherTextKey];
+
+            if (field.field_type === "radio") {
+              if (value !== null && value !== undefined && otherTextValue && otherValuesLower.includes(otherComparable(value))) {
+                value = otherTextValue;
+              }
+            } else if (field.field_type === "checkbox") {
+            const otherTextStr = otherTextValue ? String(otherTextValue) : "";
+            if (Array.isArray(value) && otherTextStr) {
+                const hasOther = value.some(v => otherValuesLower.includes(otherComparable(v)));
+              if (hasOther) {
+                  value = value.filter(v => !otherValuesLower.includes(otherComparable(v)));
+                value.push(otherTextStr);
+              }
+            }
+          }
+        }
         fieldData[field.field_key] = value !== null && value !== undefined ? value : null;
       }
       return {
@@ -1573,12 +1790,34 @@ app.get("/admin/forms/:id/responses.csv", requireAdmin, async (req, res) => {
         let value = row[field.field_key];
         if (field.field_type === "checkbox" && value) {
           try {
-            const arr = typeof value === "string" ? JSON.parse(value) : value;
+            let arr = typeof value === "string" ? JSON.parse(value) : value;
+
+            if (["radio", "checkbox"].includes(field.field_type) && fieldHasOtherOption(field)) {
+              const otherValuesLower = getOtherOptionValuesLower(field);
+              const otherTextValue = row[getOtherTextKey(field.field_key)];
+              const otherTextStr = otherTextValue ? String(otherTextValue) : "";
+
+              if (Array.isArray(arr) && otherTextStr) {
+                const hasOther = arr.some(v => otherValuesLower.includes(otherComparable(v)));
+                if (hasOther) {
+                  arr = arr.filter(v => !otherValuesLower.includes(otherComparable(v)));
+                  arr.push(otherTextStr);
+                }
+              }
+            }
+
             csvRow.push(Array.isArray(arr) ? arr.join(" | ") : "");
           } catch {
             csvRow.push("");
           }
         } else {
+          if (["radio", "checkbox"].includes(field.field_type) && fieldHasOtherOption(field) && field.field_type === "radio") {
+            const otherValuesLower = getOtherOptionValuesLower(field);
+            const otherTextValue = row[getOtherTextKey(field.field_key)];
+            if (value !== null && value !== undefined && otherTextValue && otherValuesLower.includes(otherComparable(value))) {
+              value = otherTextValue;
+            }
+          }
           csvRow.push(value || "");
         }
       });

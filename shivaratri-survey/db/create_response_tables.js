@@ -13,6 +13,60 @@ const pool = mysql.createPool({
   queueLimit: 0,
 });
 
+function parseFieldOptions(options) {
+  try {
+    if (!options) return [];
+    const parsed = typeof options === "string" ? JSON.parse(options) : options;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function getOptionPrimitiveValue(opt) {
+  if (opt && typeof opt === "object") return opt.value ?? opt.label ?? "";
+  return opt;
+}
+
+function getOptionPrimitiveLabel(opt) {
+  if (opt && typeof opt === "object") return opt.label ?? opt.value ?? "";
+  return opt;
+}
+
+function fieldHasOtherOption(field) {
+  const options = parseFieldOptions(field.options);
+  for (const opt of options) {
+    const v = String(getOptionPrimitiveValue(opt) ?? "").trim();
+    const l = String(getOptionPrimitiveLabel(opt) ?? "").trim();
+    if (!v && !l) continue;
+
+    const comparableV = String(v || "").toLowerCase().trim().replace(/[^a-z]/g, "");
+    const comparableL = String(l || "").toLowerCase().trim().replace(/[^a-z]/g, "");
+    if (comparableV === "other") return true;
+    if (comparableL === "other") return true;
+  }
+  return false;
+}
+
+function getOtherTextKey(fieldKey) {
+  const oldKey = `${fieldKey}_other_text`;
+  if (oldKey.length <= 64) return oldKey;
+
+  function shortHash(s) {
+    let h = 2166136261;
+    const str = String(s || "");
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0).toString(36);
+  }
+
+  const hash = shortHash(fieldKey).slice(0, 10);
+  const head = String(fieldKey).slice(0, 50).replace(/_+$/g, "");
+  return `${head}_ot_${hash}`;
+}
+
 function getFormResponseTableName(formId) {
   return `form_responses_${formId}`;
 }
@@ -69,6 +123,11 @@ async function createFormResponseTable(formId, fields) {
     }
 
     sql += `,\n    ${columnDef}`;
+
+    if (["radio", "checkbox"].includes(field.field_type) && fieldHasOtherOption(field)) {
+      const otherTextKey = getOtherTextKey(fieldKey);
+      sql += `,\n    \`${otherTextKey}\` VARCHAR(255) NULL`;
+    }
   }
 
   // Add indexes at the end
@@ -157,6 +216,13 @@ async function migrate() {
                   values.push(JSON.stringify(Array.isArray(value) ? value : []));
                 } else {
                   values.push(value || null);
+                }
+
+                if (["radio", "checkbox"].includes(field.field_type) && fieldHasOtherOption(field)) {
+                  const otherTextKey = getOtherTextKey(field.field_key);
+                  columns.push(`\`${otherTextKey}\``);
+                  const otherTextValue = responseData[otherTextKey];
+                  values.push(otherTextValue ? String(otherTextValue) : null);
                 }
               }
 
