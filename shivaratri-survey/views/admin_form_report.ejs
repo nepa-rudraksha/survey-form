@@ -113,6 +113,48 @@
       </div>
     </div>
 
+    <!-- Countries by IP -->
+    <% if (topCountries && topCountries.length > 0) { %>
+      <div class="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
+        <div class="flex items-center justify-between mb-4">
+          <div class="min-w-0">
+            <h2 class="text-lg font-semibold">Countries (by IP)</h2>
+            <div class="text-sm text-neutral-600">Approximate geolocation</div>
+          </div>
+          <select
+            id="countriesChartType"
+            class="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm"
+            onchange="changeChartType('countriesChart', this.value)"
+          >
+            <option value="doughnut">Doughnut</option>
+            <option value="pie">Pie</option>
+            <option value="bar">Bar</option>
+            <option value="line">Line</option>
+          </select>
+        </div>
+        <div class="grid gap-4 md:grid-cols-2">
+          <div class="h-64">
+            <canvas id="countriesChart"></canvas>
+          </div>
+          <div class="space-y-2">
+            <% topCountries.forEach(function(loc) { %>
+              <div class="flex items-center justify-between rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm font-semibold text-neutral-900 truncate"><%= loc.label %></div>
+                  <div class="text-xs text-neutral-600 mt-1"><%= loc.count %> responses</div>
+                </div>
+                <div class="text-right">
+                  <div class="text-lg font-bold text-primary">
+                    <%= kpis.total > 0 ? Math.round((loc.count / kpis.total) * 100) : 0 %>%
+                  </div>
+                </div>
+              </div>
+            <% }); %>
+          </div>
+        </div>
+      </div>
+    <% } %>
+
     <!-- Field Statistics -->
     <% Object.keys(fieldStats).forEach(function(fieldKey) { 
          const stats = fieldStats[fieldKey];
@@ -169,32 +211,53 @@
       const oldChart = chartInstances[canvasId];
       const config = JSON.parse(JSON.stringify(oldChart.config)); // Deep clone
       
+      const colors = [
+        '#C19A5B',
+        '#D4AF7A',
+        '#E8C49A',
+        '#F5D9BA',
+        '#F9E8D3',
+        '#FCF3E8'
+      ];
+
       // Update chart type and properties
-      if (chartType === 'area') {
-        config.type = 'line';
-        if (config.data.datasets && config.data.datasets[0]) {
-          config.data.datasets[0].fill = true;
-        }
+      const isPieLike = chartType === 'pie' || chartType === 'doughnut';
+      const isLineLike = chartType === 'line' || chartType === 'area';
+      const normalizedType = chartType === 'area' ? 'line' : chartType;
+
+      config.type = normalizedType;
+      if (!config.data || !config.data.datasets || !config.data.datasets[0]) {
+        oldChart.destroy();
+        chartInstances[canvasId] = new Chart(canvas, config);
+        return;
+      }
+
+      const ds = config.data.datasets[0];
+
+      if (isPieLike) {
+        ds.backgroundColor = ds.backgroundColor && ds.backgroundColor.length ? ds.backgroundColor : colors;
+        // Doughnut/Pie charts shouldn't keep scales from line/bar configs.
+        if (config.options && config.options.scales) delete config.options.scales;
+        config.options = config.options || {};
+        config.options.maintainAspectRatio = false;
+        config.options.plugins = config.options.plugins || {};
+        config.options.plugins.legend = { position: 'bottom' };
       } else {
-        config.type = chartType;
-        if (config.data.datasets && config.data.datasets[0]) {
-          if (chartType === 'line') {
-            config.data.datasets[0].fill = false;
-          } else if (chartType === 'bar') {
-            config.data.datasets[0].fill = false;
-          } else if (chartType === 'doughnut' || chartType === 'pie') {
-            if (!config.data.datasets[0].backgroundColor) {
-              config.data.datasets[0].backgroundColor = [
-                '#C19A5B',
-                '#D4AF7A',
-                '#E8C49A',
-                '#F5D9BA',
-                '#F9E8D3',
-                '#FCF3E8'
-              ];
-            }
+        // Bar / Line
+        ds.backgroundColor = ds.backgroundColor && ds.backgroundColor.length ? ds.backgroundColor : colors;
+        ds.borderColor = ds.borderColor || '#C19A5B';
+        ds.fill = chartType === 'area';
+        ds.tension = 0.4;
+        config.options = {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            y: { beginAtZero: true, ticks: { stepSize: 1 } }
           }
-        }
+        };
       }
 
       oldChart.destroy();
@@ -262,6 +325,36 @@
       };
       chartInstances['chart_<%= fieldKey %>'] = new Chart(document.getElementById('chart_<%= fieldKey %>'), config_<%= safeKey %>);
     <% }); %>
+
+    // Countries chart
+    <% if (topCountries && topCountries.length > 0) { %>
+      const countriesData = <%- JSON.stringify(topCountries) %>;
+      const countriesConfig = {
+        type: 'doughnut',
+        data: {
+          labels: countriesData.map(c => c.label),
+          datasets: [{
+            data: countriesData.map(c => Number(c.count || 0)),
+            backgroundColor: [
+              '#C19A5B',
+              '#D4AF7A',
+              '#E8C49A',
+              '#F5D9BA',
+              '#F9E8D3',
+              '#FCF3E8'
+            ]
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom' }
+          }
+        }
+      };
+      chartInstances['countriesChart'] = new Chart(document.getElementById('countriesChart'), countriesConfig);
+    <% } %>
   </script>
 </body>
 </html>

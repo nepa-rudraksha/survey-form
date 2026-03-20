@@ -176,6 +176,7 @@
                 <% }); %>
                 <th class="px-4 py-4 font-bold text-neutral-900 whitespace-nowrap w-32">Source</th>
                 <th class="px-4 py-4 font-bold text-neutral-900 whitespace-nowrap w-32">IP</th>
+                <th class="px-4 py-4 font-bold text-neutral-900 whitespace-nowrap w-56">Location</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-neutral-100">
@@ -224,6 +225,11 @@
                   </td>
                   <td class="px-4 py-4 whitespace-nowrap">
                     <span class="text-xs font-mono text-neutral-600 break-all"><%= row.ip_address || '-' %></span>
+                  </td>
+                  <td class="px-4 py-4">
+                    <span class="text-sm text-neutral-800 break-words">
+                      <%= row.location_label || '-' %>
+                    </span>
                   </td>
                 </tr>
               <% }); %>

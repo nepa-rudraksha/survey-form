@@ -59,6 +59,54 @@ app.use(express.static(path.join(__dirname, "public")));
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 
+// Cache IP -> geo result for analytics lookups.
+// Keyed by the raw IP string used in the API request.
+const ipGeoCache = new Map();
+
+async function lookupIpLocation(ip) {
+  const rawIp = String(ip || "").trim();
+  if (!rawIp) return null;
+  if (ipGeoCache.has(rawIp)) return ipGeoCache.get(rawIp);
+
+  // Free, no-key endpoint. Returns:
+  // { country_name, region_name, city, ... }
+  const url = `https://freegeoip.app/json/${encodeURIComponent(rawIp)}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+
+  try {
+    const resp = await fetch(url, {
+      method: "GET",
+      headers: { "Accept": "application/json" },
+      signal: controller.signal,
+    });
+
+    const data = await resp.json().catch(() => null);
+    const result = {
+      city: data?.city || "",
+      region: data?.region_name || "",
+      country_name: data?.country_name || "",
+      country_code: data?.country_code || "",
+    };
+
+    // If the API doesn't return country/city, treat as unknown.
+    if (!result.country_name && !result.city && !result.region) {
+      const fallback = { city: "", region: "", country_name: "Unknown", country_code: "" };
+      ipGeoCache.set(rawIp, fallback);
+      return fallback;
+    }
+
+    ipGeoCache.set(rawIp, result);
+    return result;
+  } catch (e) {
+    const fallback = { city: "", region: "", country_name: "Unknown", country_code: "" };
+    ipGeoCache.set(rawIp, fallback);
+    return fallback;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 // -------------------- DB --------------------
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
@@ -1727,10 +1775,41 @@ app.get("/admin/forms/:id/responses", requireAdmin, async (req, res) => {
       }
     }
 
+    // Enrich current page rows with approximate location from IP.
+    // Limit lookups to unique IPs on the current page.
+    const geoByIp = new Map();
+    const uniqueIps = Array.from(
+      new Set(
+        (parsedRows || [])
+          .map(r => String(r.ip_address || "").trim())
+          .filter(ip => ip)
+      )
+    ).slice(0, 50);
+
+    for (const ip of uniqueIps) {
+      try {
+        const geo = await lookupIpLocation(ip);
+        geoByIp.set(ip, geo);
+      } catch {
+        // Keep undefined; template will fall back to IP.
+      }
+    }
+
+    const resolvedRows = (parsedRows || []).map((r) => {
+      const ip = String(r.ip_address || "").trim();
+      const geo = geoByIp.get(ip);
+      const labelParts = [];
+      if (geo?.city) labelParts.push(geo.city);
+      if (geo?.region) labelParts.push(geo.region);
+      if (geo?.country_name) labelParts.push(geo.country_name);
+      const location_label = labelParts.length ? labelParts.join(", ") : (ip || "");
+      return { ...r, location_label };
+    });
+
     res.render("admin_form_responses", {
       form,
       fields,
-      rows: parsedRows,
+      rows: resolvedRows,
       page,
       perPage,
       total,
@@ -2168,6 +2247,58 @@ app.get("/admin/forms/:id/report", requireAdmin, async (req, res) => {
       last_30_days_pct: pct(totals.last_30_days),
     };
 
+    // Countries by IP (approximate via IP geolocation).
+    // We only geocode the top N IPs by submission count to keep the request fast.
+    let topCountries = [];
+    try {
+      let locationWhereClause = "";
+      if (dateWhereClause) {
+        locationWhereClause = dateWhereClause + " AND ";
+      } else {
+        locationWhereClause = "WHERE ";
+      }
+      locationWhereClause += "ip_address IS NOT NULL AND ip_address <> ''";
+
+      const [ipRows] = await pool.query(
+        `SELECT ip_address AS ip, COUNT(*) AS c
+         FROM \`${tableName}\`
+         ${locationWhereClause}
+         GROUP BY ip_address
+         ORDER BY c DESC
+         LIMIT 30`,
+        dateParams
+      );
+
+      const countryAgg = new Map(); // country_name -> { label, country_name, count }
+
+      for (const r of ipRows) {
+        const ip = String(r.ip || "").trim();
+        if (!ip) continue;
+
+        const count = Number(r.c || 0);
+        const geo = await lookupIpLocation(ip);
+
+        const country_name = geo?.country_name || "Unknown";
+
+        const key = country_name;
+        const label = country_name;
+
+        const prev = countryAgg.get(key);
+        if (prev) {
+          prev.count += count;
+        } else {
+          countryAgg.set(key, { label, country_name, count });
+        }
+      }
+
+      topCountries = Array.from(countryAgg.values())
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10);
+    } catch (e) {
+      console.error("Error building location analytics:", e.message);
+      topCountries = [];
+    }
+
     res.render("admin_form_report", {
       form,
       fields,
@@ -2177,6 +2308,7 @@ app.get("/admin/forms/:id/report", requireAdmin, async (req, res) => {
       days,
       dateFrom,
       dateTo,
+      topCountries,
     });
   } catch (e) {
     console.error("Error generating report:", e);
