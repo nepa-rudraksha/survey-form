@@ -8,6 +8,11 @@
   <script>
     tailwind.config = { theme: { extend: { colors: { primary: "#C19A5B" } } } };
   </script>
+  <style>
+    .field-drag-handle { touch-action: none; }
+    .field-drop-before { box-shadow: inset 0 3px 0 0 #C19A5B; }
+    .field-drop-after { box-shadow: inset 0 -3px 0 0 #C19A5B; }
+  </style>
 </head>
 <body class="min-h-screen bg-neutral-50 text-neutral-900">
   <header class="border-b border-neutral-200 bg-white">
@@ -118,7 +123,7 @@
             </button>
             <button
               type="button"
-              onclick="addField()"
+              onclick="addField(null, null, { scroll: true })"
               class="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-95"
             >
               Add Field
@@ -230,7 +235,7 @@
           <span class="text-xs font-semibold text-neutral-600">Fields in this section</span>
           <button
             type="button"
-            onclick="addFieldToSection('${sectionId}')"
+            onclick="addFieldToSection('${sectionId}', null, { scroll: true })"
             class="rounded-lg border border-neutral-300 bg-white px-3 py-1 text-xs font-semibold hover:bg-neutral-50"
           >
             + Add Field
@@ -251,13 +256,75 @@
       }
     }
 
-    function addField(fieldData = null, sectionId = null) {
-      const container = sectionId 
-        ? document.getElementById(`fields_${sectionId}`)
+    let draggedFieldId = null;
+
+    function onFieldHandleDragStart(e, fieldId) {
+      draggedFieldId = fieldId;
+      e.dataTransfer.setData('text/plain', fieldId);
+      e.dataTransfer.effectAllowed = 'move';
+      const el = document.querySelector('[data-field-id="' + fieldId + '"]');
+      if (el) el.classList.add('opacity-60', 'ring-2', 'ring-primary/30');
+    }
+
+    function onFieldHandleDragEnd(e, fieldId) {
+      draggedFieldId = null;
+      const el = document.querySelector('[data-field-id="' + fieldId + '"]');
+      if (el) el.classList.remove('opacity-60', 'ring-2', 'ring-primary/30');
+      document.querySelectorAll('.field-drop-indicator').forEach(function (n) {
+        n.classList.remove('field-drop-indicator', 'field-drop-before', 'field-drop-after');
+      });
+    }
+
+    function onFieldDragOver(e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const target = e.currentTarget;
+      const rect = target.getBoundingClientRect();
+      const before = e.clientY < rect.top + rect.height / 2;
+      target.classList.remove('field-drop-indicator', 'field-drop-before', 'field-drop-after');
+      target.classList.add('field-drop-indicator', before ? 'field-drop-before' : 'field-drop-after');
+    }
+
+    function onFieldDragLeave(e) {
+      const t = e.currentTarget;
+      const rel = e.relatedTarget;
+      if (rel && t.contains(rel)) return;
+      t.classList.remove('field-drop-indicator', 'field-drop-before', 'field-drop-after');
+    }
+
+    function onFieldDrop(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const id = e.dataTransfer.getData('text/plain') || draggedFieldId;
+      const dragged = document.querySelector('[data-field-id="' + id + '"]');
+      const dropTarget = e.currentTarget;
+      if (!dragged || !dropTarget || dragged === dropTarget) return;
+      if (dragged.parentElement !== dropTarget.parentElement) return;
+
+      dropTarget.classList.remove('field-drop-indicator', 'field-drop-before', 'field-drop-after');
+
+      const rect = dropTarget.getBoundingClientRect();
+      const before = e.clientY < rect.top + rect.height / 2;
+      const parent = dropTarget.parentElement;
+      if (before) {
+        parent.insertBefore(dragged, dropTarget);
+      } else {
+        parent.insertBefore(dragged, dropTarget.nextSibling);
+      }
+    }
+
+    function bindFieldDragSort(fieldDiv) {
+      fieldDiv.addEventListener('dragover', onFieldDragOver);
+      fieldDiv.addEventListener('dragleave', onFieldDragLeave);
+      fieldDiv.addEventListener('drop', onFieldDrop);
+    }
+
+    function addField(fieldData = null, sectionId = null, opts = {}) {
+      let container = sectionId
+        ? document.getElementById('fields_' + sectionId)
         : document.getElementById('fieldsWithoutSectionContainer');
-      
+
       if (!container) {
-        // If section container doesn't exist, add to fields without section
         container = document.getElementById('fieldsWithoutSectionContainer');
         sectionId = null;
       }
@@ -273,7 +340,7 @@
       };
 
       const fieldDiv = document.createElement('div');
-      fieldDiv.className = 'rounded-xl border border-neutral-200 bg-neutral-50 p-4';
+      fieldDiv.className = 'rounded-xl border border-neutral-200 bg-neutral-50 p-4 transition-shadow';
       fieldDiv.dataset.fieldId = fieldId;
       if (sectionId) {
         fieldDiv.dataset.sectionId = sectionId;
@@ -284,9 +351,25 @@
       const isExistingField = !!field.field_key; // Track if this is an existing field
       
       fieldDiv.innerHTML = `
-        <div class="flex items-start justify-between mb-3">
-          <h3 class="text-sm font-semibold text-neutral-900">Field</h3>
-          <div class="flex gap-2">
+        <div class="flex items-start justify-between mb-3 gap-2">
+          <div class="flex min-w-0 flex-1 items-start gap-2">
+            <span
+              class="field-drag-handle mt-0.5 shrink-0 rounded-md border border-neutral-200 bg-white p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-800"
+              draggable="true"
+              title="Drag to reorder"
+              aria-label="Drag to reorder"
+              ondragstart="onFieldHandleDragStart(event, '${fieldId}')"
+              ondragend="onFieldHandleDragEnd(event, '${fieldId}')"
+            >
+              <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <circle cx="7" cy="5" r="1.5" /><circle cx="13" cy="5" r="1.5" />
+                <circle cx="7" cy="10" r="1.5" /><circle cx="13" cy="10" r="1.5" />
+                <circle cx="7" cy="15" r="1.5" /><circle cx="13" cy="15" r="1.5" />
+              </svg>
+            </span>
+            <h3 class="text-sm font-semibold text-neutral-900">Field</h3>
+          </div>
+          <div class="flex shrink-0 gap-2">
             ${sectionId ? `<button type="button" onclick="moveFieldToNoSection('${fieldId}')" class="text-xs text-neutral-600 hover:text-neutral-900">Move out</button>` : ''}
             <button
               type="button"
@@ -377,10 +460,17 @@
       `;
 
       container.appendChild(fieldDiv);
+      bindFieldDragSort(fieldDiv);
+
+      if (opts.scroll) {
+        requestAnimationFrame(function () {
+          fieldDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+      }
     }
 
-    function addFieldToSection(sectionId, fieldData = null) {
-      addField(fieldData, sectionId);
+    function addFieldToSection(sectionId, fieldData = null, opts = {}) {
+      addField(fieldData, sectionId, opts);
     }
 
     function moveFieldToNoSection(fieldId) {
@@ -389,6 +479,9 @@
         field.removeAttribute('data-section-id');
         const container = document.getElementById('fieldsWithoutSectionContainer');
         container.appendChild(field);
+        requestAnimationFrame(function () {
+          field.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
       }
     }
 
@@ -483,7 +576,7 @@
 
     // If no sections and no fields, add one field
     if ((!sectionsData || sectionsData.length === 0) && (!fieldsWithoutSectionData || fieldsWithoutSectionData.length === 0)) {
-      addField();
+      addField(null, null, { scroll: false });
     }
 
     // Handle form submission
