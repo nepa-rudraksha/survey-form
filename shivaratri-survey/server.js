@@ -766,6 +766,8 @@ app.post("/forms/:slug/submit", async (req, res) => {
 
   const { sections, fieldsBySection, fieldsWithoutSection } = await getFormFieldsBySection(form.id);
   const allFields = [...Object.values(fieldsBySection).flat(), ...fieldsWithoutSection];
+
+  const dynamicSections = await getDynamicSections('form', form.id);
   const { errors, values } = await validateDynamicForm(req.body, allFields);
 
   if (Object.keys(errors).length) {
@@ -774,6 +776,7 @@ app.post("/forms/:slug/submit", async (req, res) => {
       sections,
       fieldsBySection,
       fieldsWithoutSection,
+      dynamicSections,
       errors,
       values,
       pageMode: "new",
@@ -808,6 +811,43 @@ app.post("/forms/:slug/submit", async (req, res) => {
     }
   } catch (e) {
     console.error("Error checking table:", e);
+  }
+
+  // Unique submission enforcement (per form).
+  if (form.unique_submission_enabled && form.unique_field_key) {
+    const uniqueFieldKey = String(form.unique_field_key || "").trim();
+    if (uniqueFieldKey) {
+      const uniqueField = allFields.find((f) => String(f.field_key) === uniqueFieldKey);
+      if (uniqueField && uniqueField.field_type !== "checkbox") {
+        const uniqueValue = values[uniqueFieldKey];
+        const hasValue = uniqueValue !== null && uniqueValue !== undefined && String(uniqueValue).trim() !== "";
+        if (hasValue) {
+          try {
+            const [dupRows] = await pool.execute(
+              `SELECT COUNT(*) as c FROM \`${tableName}\` WHERE \`${uniqueFieldKey}\` = ?`,
+              [uniqueValue]
+            );
+            const dupCount = Number(dupRows?.[0]?.c || 0);
+            if (dupCount > 0) {
+              return res.status(422).render("dynamic_form", {
+                form,
+                sections,
+                fieldsBySection,
+                fieldsWithoutSection,
+                dynamicSections,
+                errors: { [uniqueFieldKey]: "You have already submitted this form once." },
+                values,
+                pageMode: "new",
+                editKey: null,
+              });
+            }
+          } catch (e) {
+            // If the response column doesn't exist yet (edge cases), do not block submissions.
+            console.error("Unique submission check failed:", e.message);
+          }
+        }
+      }
+    }
   }
   
   // Build column names and values
@@ -872,6 +912,8 @@ app.post("/forms/:slug/update/:key", async (req, res) => {
 
   const { sections, fieldsBySection, fieldsWithoutSection } = await getFormFieldsBySection(form.id);
   const allFields = [...Object.values(fieldsBySection).flat(), ...fieldsWithoutSection];
+
+  const dynamicSections = await getDynamicSections('form', form.id);
   const { errors, values } = await validateDynamicForm(req.body, allFields);
 
   if (Object.keys(errors).length) {
@@ -880,11 +922,48 @@ app.post("/forms/:slug/update/:key", async (req, res) => {
       sections,
       fieldsBySection,
       fieldsWithoutSection,
+      dynamicSections,
       errors,
       values,
       pageMode: "edit",
       editKey: key,
     });
+  }
+
+  // Unique submission enforcement (per form) for edits.
+  if (form.unique_submission_enabled && form.unique_field_key) {
+    const uniqueFieldKey = String(form.unique_field_key || "").trim();
+    if (uniqueFieldKey) {
+      const uniqueField = allFields.find((f) => String(f.field_key) === uniqueFieldKey);
+      if (uniqueField && uniqueField.field_type !== "checkbox") {
+        const uniqueValue = values[uniqueFieldKey];
+        const hasValue = uniqueValue !== null && uniqueValue !== undefined && String(uniqueValue).trim() !== "";
+        if (hasValue) {
+          try {
+            const [dupRows] = await pool.execute(
+              `SELECT COUNT(*) as c FROM \`${tableName}\` WHERE \`${uniqueFieldKey}\` = ? AND edit_key <> ?`,
+              [uniqueValue, key]
+            );
+            const dupCount = Number(dupRows?.[0]?.c || 0);
+            if (dupCount > 0) {
+              return res.status(422).render("dynamic_form", {
+                form,
+                sections,
+                fieldsBySection,
+                fieldsWithoutSection,
+                dynamicSections,
+                errors: { [uniqueFieldKey]: "Another submission already exists with this unique value." },
+                values,
+                pageMode: "edit",
+                editKey: key,
+              });
+            }
+          } catch (e) {
+            console.error("Unique submission check failed (update):", e.message);
+          }
+        }
+      }
+    }
   }
 
   const ip = getClientIp(req);
@@ -1338,6 +1417,10 @@ app.post("/admin/forms/save", requireAdmin, async (req, res) => {
   const slug = String(req.body.slug || "").trim() || generateSlug(title);
   const showOnHomepage = req.body.show_on_homepage === "on" ? 1 : 0;
   const status = String(req.body.status || "draft");
+  const uniqueSubmissionEnabled = req.body.unique_submission_enabled === "on" ? 1 : 0;
+  let uniqueFieldKey = String(req.body.unique_field_key || "").trim();
+  if (!uniqueFieldKey) uniqueFieldKey = null;
+  if (!uniqueSubmissionEnabled) uniqueFieldKey = null;
 
   if (!title) {
     return res.status(400).json({ error: "Title is required" });
@@ -1370,15 +1453,15 @@ app.post("/admin/forms/save", requireAdmin, async (req, res) => {
     if (formId && Number.isFinite(formId)) {
       // Update existing
       await pool.execute(
-        "UPDATE forms SET title = ?, description = ?, slug = ?, show_on_homepage = ?, status = ? WHERE id = ?",
-        [title, description, slug, showOnHomepage, status, formId]
+        "UPDATE forms SET title = ?, description = ?, slug = ?, show_on_homepage = ?, status = ?, unique_submission_enabled = ?, unique_field_key = ? WHERE id = ?",
+        [title, description, slug, showOnHomepage, status, uniqueSubmissionEnabled, uniqueFieldKey, formId]
       );
       form = { id: formId };
     } else {
       // Create new
       const [result] = await pool.execute(
-        "INSERT INTO forms (title, description, slug, show_on_homepage, status) VALUES (?, ?, ?, ?, ?)",
-        [title, description, slug, showOnHomepage, status]
+        "INSERT INTO forms (title, description, slug, show_on_homepage, status, unique_submission_enabled, unique_field_key) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [title, description, slug, showOnHomepage, status, uniqueSubmissionEnabled, uniqueFieldKey]
       );
       form = { id: result.insertId };
     }
@@ -1528,6 +1611,28 @@ app.post("/admin/forms/save", requireAdmin, async (req, res) => {
       throw e;
     } finally {
       conn.release();
+    }
+
+    // Validate that the selected unique_field_key actually exists after any
+    // frontend/backend normalization. If not, disable uniqueness for safety.
+    let finalUniqueSubmissionEnabled = uniqueSubmissionEnabled;
+    let finalUniqueFieldKey = uniqueFieldKey;
+    if (finalUniqueSubmissionEnabled && finalUniqueFieldKey) {
+      const found = savedFields.some((f) => String(f.field_key) === String(finalUniqueFieldKey));
+      if (!found) {
+        finalUniqueSubmissionEnabled = 0;
+        finalUniqueFieldKey = null;
+      }
+    }
+
+    if (
+      finalUniqueSubmissionEnabled !== uniqueSubmissionEnabled ||
+      finalUniqueFieldKey !== uniqueFieldKey
+    ) {
+      await pool.execute(
+        "UPDATE forms SET unique_submission_enabled = ?, unique_field_key = ? WHERE id = ?",
+        [finalUniqueSubmissionEnabled, finalUniqueFieldKey, form.id]
+      );
     }
 
     // Create or recreate the response table for this form.

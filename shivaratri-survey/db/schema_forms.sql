@@ -6,6 +6,8 @@ CREATE TABLE IF NOT EXISTS forms (
   slug VARCHAR(100) NOT NULL UNIQUE,
   show_on_homepage TINYINT(1) NOT NULL DEFAULT 0,
   status ENUM('draft', 'published') NOT NULL DEFAULT 'draft',
+  unique_submission_enabled TINYINT(1) NOT NULL DEFAULT 0,
+  unique_field_key VARCHAR(100) NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_slug (slug),

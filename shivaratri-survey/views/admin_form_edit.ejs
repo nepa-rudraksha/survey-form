@@ -106,6 +106,49 @@
               <span class="text-sm font-semibold text-neutral-800">Show on homepage</span>
             </label>
           </div>
+
+          <!-- Unique submission settings -->
+          <div>
+            <label class="flex items-center gap-3">
+              <input
+                type="checkbox"
+                name="unique_submission_enabled"
+                id="unique_submission_enabled"
+                <%= form && form.unique_submission_enabled ? 'checked' : '' %>
+                class="accent-primary"
+              />
+              <span class="text-sm font-semibold text-neutral-800">Unique submission (per this form)</span>
+            </label>
+          </div>
+
+          <% const uniqAllowedTypes = ['text','textarea','number','phone','email','date','dropdown','radio','scale']; %>
+          <% const uniqCandidateFields = [
+            ...Object.values(fieldsBySection || {}).flat(),
+            ...(fieldsWithoutSection || [])
+          ].filter(f => f && uniqAllowedTypes.includes(f.field_type)); %>
+
+          <div>
+            <label class="block text-sm font-semibold text-neutral-800 mb-2">
+              Unique field *
+            </label>
+            <select
+              name="unique_field_key"
+              id="unique_field_key_select"
+              class="w-full rounded-xl border border-neutral-300 bg-white px-4 py-3 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/15"
+              <%= form && form.unique_submission_enabled ? '' : 'disabled' %>
+            >
+              <option value="">Select field</option>
+              <% uniqCandidateFields.forEach(function(f){ %>
+                <option
+                  value="<%= f.field_key %>"
+                  <%= form && form.unique_field_key === f.field_key ? 'selected' : '' %>
+                >
+                  <%= f.label %> (<%= f.field_key %>)
+                </option>
+              <% }); %>
+            </select>
+            <p class="mt-1 text-xs text-neutral-600">Example: use <code>email</code> or <code>phone</code> to prevent multiple fills.</p>
+          </div>
         </div>
       </div>
 
@@ -173,6 +216,61 @@
 
     let fieldCounter = 0;
     let sectionCounter = 0;
+
+    // Unique submission configuration in forms table.
+    // We only allow single-value field types (checkbox is array-valued).
+    const uniqueAllowedTypes = new Set(['text','textarea','number','phone','email','date','dropdown','radio','scale']);
+
+    function refreshUniqueFieldKeySelect() {
+      const selectEl = document.getElementById('unique_field_key_select');
+      if (!selectEl) return;
+
+      const current = selectEl.value || '';
+      const uniqueToggleEl = document.getElementById('unique_submission_enabled');
+      const isEnabled = !!uniqueToggleEl && uniqueToggleEl.checked;
+
+      // Build options from current DOM fields.
+      const fieldContainers = document.querySelectorAll('[data-field-id]');
+      const seen = new Set();
+      const options = [];
+
+      fieldContainers.forEach((container) => {
+        const fieldId = container.dataset.fieldId;
+        const keyEl = document.getElementById(`field_key_${fieldId}`);
+        const typeEl = document.querySelector(`select[name="field_type_${fieldId}"]`);
+        const labelEl = document.getElementById(`field_label_${fieldId}`);
+        const fieldKey = keyEl ? String(keyEl.value || '').trim() : '';
+        const fieldType = typeEl ? String(typeEl.value || '').trim() : '';
+        const fieldLabel = labelEl ? String(labelEl.value || '').trim() : '';
+
+        if (!fieldKey) return;
+        if (!uniqueAllowedTypes.has(fieldType)) return;
+        if (seen.has(fieldKey)) return;
+        seen.add(fieldKey);
+
+        options.push({ key: fieldKey, label: fieldLabel || fieldKey });
+      });
+
+      options.sort((a, b) => a.label.localeCompare(b.label));
+
+      selectEl.innerHTML = `
+        <option value="">Select field</option>
+        ${options
+          .map((o) => {
+            const selected = o.key === current ? 'selected' : '';
+            return `<option value="${escapeHtml(o.key)}" ${selected}>${escapeHtml(o.label)} (${escapeHtml(o.key)})</option>`;
+          })
+          .join('')}
+      `;
+
+      // Disable/enable based on toggle.
+      selectEl.disabled = !isEnabled;
+    }
+
+    const uniqueSubmissionToggleEl = document.getElementById('unique_submission_enabled');
+    uniqueSubmissionToggleEl?.addEventListener('change', function () {
+      refreshUniqueFieldKeySelect();
+    });
 
     function generateFieldKey() {
       return 'field_' + (++fieldCounter) + '_' + Date.now();
@@ -313,6 +411,7 @@
 
         section.remove();
         refreshFieldAssignSectionSelects();
+        refreshUniqueFieldKeySelect();
       }
     }
 
@@ -369,6 +468,7 @@
         if (container) container.appendChild(field);
       }
 
+      refreshUniqueFieldKeySelect();
       requestAnimationFrame(function () {
         field.scrollIntoView({ behavior: 'smooth', block: 'center' });
       });
@@ -587,6 +687,7 @@
 
       container.appendChild(fieldDiv);
       bindFieldDragSort(fieldDiv);
+      refreshUniqueFieldKeySelect();
 
       if (opts.scroll) {
         requestAnimationFrame(function () {
@@ -605,6 +706,7 @@
         field.removeAttribute('data-section-id');
         const container = document.getElementById('fieldsWithoutSectionContainer');
         container.appendChild(field);
+        refreshUniqueFieldKeySelect();
         requestAnimationFrame(function () {
           field.scrollIntoView({ behavior: 'smooth', block: 'center' });
         });
@@ -629,6 +731,8 @@
           container.style.display = 'none';
         }
       }
+
+      refreshUniqueFieldKeySelect();
     }
 
     // Auto-update field key from label
@@ -662,6 +766,7 @@
       const field = document.querySelector(`[data-field-id="${fieldId}"]`);
       if (field && confirm('Remove this field?')) {
         field.remove();
+        refreshUniqueFieldKeySelect();
       }
     }
 
@@ -705,9 +810,15 @@
       addField(null, null, { scroll: false });
     }
 
+    // Populate unique-field dropdown based on current fields.
+    refreshUniqueFieldKeySelect();
+
     // Handle form submission
     document.getElementById('formEditor').addEventListener('submit', async (e) => {
       e.preventDefault();
+
+      // Rebuild dropdown options just before saving (handles newly added/removed fields).
+      refreshUniqueFieldKeySelect();
 
       const formData = new FormData(e.target);
       const sectionsData = [];
@@ -812,6 +923,8 @@
         slug: formData.get('slug'),
         show_on_homepage: formData.get('show_on_homepage') === 'on' ? 'on' : '',
         status: formData.get('status'),
+        unique_submission_enabled: formData.get('unique_submission_enabled') === 'on' ? 'on' : '',
+        unique_field_key: formData.get('unique_field_key') || '',
         sections: JSON.stringify(sectionsData),
         fields: JSON.stringify(fieldsData),
       };
