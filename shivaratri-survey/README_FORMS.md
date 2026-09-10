@@ -76,15 +76,19 @@ Pick **Photo / Video Upload** as the field type and two extra settings appear:
 
 Limits and processing:
 
-- Maximum **25 MB per file**.
+- Maximum **25 MB per photo** and **100 MB per video**.
 - Photos are downscaled in the browser before upload, then resized again on the
   server to a longest side of 1920px (JPEG, quality 82). A 6 MB phone photo
   typically ends up around 300 KB. Animated GIFs are stored untouched.
 - Videos are re-encoded to 720p H.264 **if `ffmpeg` is installed on the host**.
-  Without ffmpeg they are stored as uploaded, still capped at 25 MB. The server
+  Without ffmpeg they are stored as uploaded, still capped at 100 MB. The server
   logs which mode is active at startup.
 - Image resizing uses the `sharp` package. If it fails to load, images are stored
   as uploaded rather than the app crashing.
+- Uploads are buffered to a temp directory on disk, not in memory, so large videos
+  do not spike RAM. Temp files are removed once the response is sent.
+- If your reverse proxy caps request bodies, raise it to at least 100 MB or large
+  videos will be rejected before they reach the app.
 
 Storage:
 

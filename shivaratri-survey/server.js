@@ -119,7 +119,9 @@ async function lookupIpLocation(ip) {
 }
 
 // -------------------- Media uploads (photo / video fields) --------------------
-const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25 MB per file
+const MAX_IMAGE_BYTES = 25 * 1024 * 1024; // 25 MB per photo
+const MAX_VIDEO_BYTES = 100 * 1024 * 1024; // 100 MB per video
+const MAX_UPLOAD_BYTES = Math.max(MAX_IMAGE_BYTES, MAX_VIDEO_BYTES);
 const MAX_FILES_PER_FIELD = 5;
 const IMAGE_MAX_DIMENSION = 1920; // px, longest side
 const IMAGE_QUALITY = 82;
@@ -162,9 +164,17 @@ execFile("ffmpeg", ["-version"], (err) => {
   console.log(
     ffmpegAvailable
       ? "ffmpeg detected - uploaded video will be compressed to 720p"
-      : "ffmpeg not found - uploaded video will be stored as-is (max 25 MB)"
+      : `ffmpeg not found - uploaded video will be stored as-is (max ${mb(MAX_VIDEO_BYTES)} MB)`
   );
 });
+
+function mb(bytes) {
+  return Math.round(bytes / (1024 * 1024));
+}
+
+function maxBytesForKind(kind) {
+  return kind === "video" ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+}
 
 function mediaKindFromMime(mime) {
   const m = String(mime || "").toLowerCase();
@@ -254,7 +264,7 @@ async function deleteUploadByUrl(url) {
 
 function runFfmpeg(args) {
   return new Promise((resolve, reject) => {
-    execFile("ffmpeg", args, { timeout: 120000, maxBuffer: 1024 * 1024 }, (err) =>
+    execFile("ffmpeg", args, { timeout: 600000, maxBuffer: 1024 * 1024 }, (err) =>
       err ? reject(err) : resolve()
     );
   });
@@ -269,12 +279,12 @@ async function writeImageUpload(file, destDir, baseName) {
   if (passthrough) {
     const ext = extForUpload(file, "image");
     const abs = path.join(destDir, `${baseName}.${ext}`);
-    await fsp.writeFile(abs, file.buffer);
-    return { fileName: `${baseName}.${ext}`, mime: mime || "image/jpeg", size: file.buffer.length };
+    await fsp.copyFile(file.path, abs);
+    return { fileName: `${baseName}.${ext}`, mime: mime || "image/jpeg", size: file.size };
   }
 
   const abs = path.join(destDir, `${baseName}.jpg`);
-  const output = await sharp(file.buffer)
+  const output = await sharp(file.path)
     .rotate() // honour EXIF orientation before we strip metadata
     .resize({
       width: IMAGE_MAX_DIMENSION,
@@ -295,22 +305,20 @@ async function writeVideoUpload(file, destDir, baseName) {
 
   if (!ffmpegAvailable) {
     const abs = path.join(destDir, `${baseName}.${originalExt}`);
-    await fsp.writeFile(abs, file.buffer);
+    await fsp.copyFile(file.path, abs);
     return {
       fileName: `${baseName}.${originalExt}`,
       mime: file.mimetype || "video/mp4",
-      size: file.buffer.length,
+      size: file.size,
     };
   }
 
-  const tmpIn = path.join(os.tmpdir(), `up_${baseName}.${originalExt}`);
   const abs = path.join(destDir, `${baseName}.mp4`);
 
   try {
-    await fsp.writeFile(tmpIn, file.buffer);
     await runFfmpeg([
       "-y",
-      "-i", tmpIn,
+      "-i", file.path,
       "-vf", `scale='min(iw,trunc(ih*16/9/2)*2)':'min(${VIDEO_MAX_HEIGHT},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2`,
       "-c:v", "libx264",
       "-preset", "veryfast",
@@ -327,14 +335,12 @@ async function writeVideoUpload(file, destDir, baseName) {
     console.error("ffmpeg transcode failed, storing original:", e.message);
     await fsp.rm(abs, { force: true }).catch(() => {});
     const fallbackAbs = path.join(destDir, `${baseName}.${originalExt}`);
-    await fsp.writeFile(fallbackAbs, file.buffer);
+    await fsp.copyFile(file.path, fallbackAbs);
     return {
       fileName: `${baseName}.${originalExt}`,
       mime: file.mimetype || "video/mp4",
-      size: file.buffer.length,
+      size: file.size,
     };
-  } finally {
-    await fsp.rm(tmpIn, { force: true }).catch(() => {});
   }
 }
 
@@ -371,8 +377,16 @@ async function deleteFormUploadDir(formId) {
   }
 }
 
+// Uploads are buffered to a temp directory rather than memory: a 100 MB video
+// held in RAM per concurrent upload would exhaust a small server.
+const UPLOAD_TMP = path.join(os.tmpdir(), "nr_form_uploads");
+fs.mkdirSync(UPLOAD_TMP, { recursive: true });
+
 const mediaUpload = multer({
-  storage: multer.memoryStorage(),
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, UPLOAD_TMP),
+    filename: (req, file, cb) => cb(null, `up_${crypto.randomBytes(12).toString("hex")}`),
+  }),
   limits: { fileSize: MAX_UPLOAD_BYTES, files: MAX_FILES_PER_FIELD * 20 },
 });
 
@@ -380,9 +394,16 @@ const mediaUpload = multer({
 // are surfaced as a form error instead of a 500 so the visitor keeps their answers.
 function handleMediaUpload(req, res, next) {
   mediaUpload.any()(req, res, (err) => {
+    // Whatever happens next - stored, rejected, or crashed - the temp copies go away.
+    res.on("finish", () => {
+      for (const file of req.files || []) {
+        if (file && file.path) fsp.rm(file.path, { force: true }).catch(() => {});
+      }
+    });
+
     if (err) {
       if (err.code === "LIMIT_FILE_SIZE") {
-        req.uploadError = `Each file must be ${Math.round(MAX_UPLOAD_BYTES / (1024 * 1024))} MB or smaller.`;
+        req.uploadError = `Photos must be ${mb(MAX_IMAGE_BYTES)} MB or smaller and videos ${mb(MAX_VIDEO_BYTES)} MB or smaller.`;
       } else if (err.code === "LIMIT_FILE_COUNT") {
         req.uploadError = "Too many files were attached.";
       } else {
@@ -689,8 +710,16 @@ async function validateDynamicForm(body, fields, req = null) {
           if (settings.accept === "video" && kind !== "video") return true;
           return false;
         });
+
+        // Photos and videos have different size limits.
+        const tooBig = incoming.find((f) => f.size > maxBytesForKind(mediaKindFromMime(f.mimetype)));
+
         if (rejected) {
           errors[fieldKey] = `Please upload a ${acceptLabel(settings.accept)} file.`;
+        } else if (tooBig) {
+          const kind = mediaKindFromMime(tooBig.mimetype);
+          errors[fieldKey] =
+            `${kind === "video" ? "Videos" : "Photos"} must be ${mb(maxBytesForKind(kind))} MB or smaller.`;
         }
       }
 

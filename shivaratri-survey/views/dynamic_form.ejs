@@ -414,7 +414,7 @@
                             />
                             <span class="text-sm font-semibold text-neutral-800">Tap to upload</span>
                             <span class="text-xs text-neutral-500">
-                              <%= acceptWords %> &middot; up to <%= fileSettings.maxFiles %> file<%= fileSettings.maxFiles > 1 ? 's' : '' %> &middot; max 25 MB each
+                              <%= acceptWords %> &middot; up to <%= fileSettings.maxFiles %> file<%= fileSettings.maxFiles > 1 ? 's' : '' %> &middot; <%= fileSettings.accept === 'video' ? 'max 100 MB each' : fileSettings.accept === 'image' ? 'max 25 MB each' : 'photos 25 MB, videos 100 MB' %>
                             </span>
                           </label>
 
@@ -718,7 +718,7 @@
                             />
                             <span class="text-sm font-semibold text-neutral-800">Tap to upload</span>
                             <span class="text-xs text-neutral-500">
-                              <%= acceptWords %> &middot; up to <%= fileSettings.maxFiles %> file<%= fileSettings.maxFiles > 1 ? 's' : '' %> &middot; max 25 MB each
+                              <%= acceptWords %> &middot; up to <%= fileSettings.maxFiles %> file<%= fileSettings.maxFiles > 1 ? 's' : '' %> &middot; <%= fileSettings.accept === 'video' ? 'max 100 MB each' : fileSettings.accept === 'image' ? 'max 25 MB each' : 'photos 25 MB, videos 100 MB' %>
                             </span>
                           </label>
 
@@ -1036,7 +1036,8 @@
     <!-- Photo / video upload fields -->
     <script>
       (function () {
-        const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+        const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
+        const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
         const COMPRESS_ABOVE_BYTES = 900 * 1024; // leave already-small photos alone
         const CLIENT_MAX_DIMENSION = 1600;
         const CLIENT_QUALITY = 0.8;
@@ -1216,8 +1217,9 @@
               }
 
               const processed = await compressImage(file);
-              if (processed.size > MAX_UPLOAD_BYTES) {
-                showError('"' + file.name + '" is ' + humanSize(processed.size) + '. The limit is 25 MB.');
+              const limit = kind === 'video' ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+              if (processed.size > limit) {
+                showError('"' + file.name + '" is ' + humanSize(processed.size) + '. The limit is ' + Math.round(limit / (1024 * 1024)) + ' MB.');
                 continue;
               }
               accepted.push(processed);

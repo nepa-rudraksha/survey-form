@@ -48,7 +48,7 @@ const SECTIONS = [
   {
     key: "media",
     title: "Photos & Videos",
-    description: "Photos are resized automatically. Each file can be up to 25 MB.",
+    description: "Photos are resized automatically. Photos can be up to 25 MB, videos up to 100 MB.",
   },
   {
     key: "wrapup",
