@@ -65,6 +65,62 @@ This will:
 - **Radio**: Single select radio buttons
 - **Checkbox**: Multi-select checkboxes
 - **Consent**: Checkbox for consent/agreement
+- **Photo / Video Upload**: One or more image/video files (see below)
+
+### Photo / Video Upload Fields
+
+Pick **Photo / Video Upload** as the field type and two extra settings appear:
+
+- **Accepted media**: Photos & videos, Photos only, or Videos only
+- **Max files**: 1-5 files per field
+
+Limits and processing:
+
+- Maximum **25 MB per file**.
+- Photos are downscaled in the browser before upload, then resized again on the
+  server to a longest side of 1920px (JPEG, quality 82). A 6 MB phone photo
+  typically ends up around 300 KB. Animated GIFs are stored untouched.
+- Videos are re-encoded to 720p H.264 **if `ffmpeg` is installed on the host**.
+  Without ffmpeg they are stored as uploaded, still capped at 25 MB. The server
+  logs which mode is active at startup.
+- Image resizing uses the `sharp` package. If it fails to load, images are stored
+  as uploaded rather than the app crashing.
+
+Storage:
+
+- Files are written to `public/uploads/form_<form_id>/` and served at
+  `/uploads/form_<form_id>/<file>`.
+- **On Coolify (or any container host), mount a persistent volume at
+  `public/uploads`** - otherwise every redeploy wipes uploaded media.
+- The stored column value is a JSON array of
+  `{ name, url, mime, size, kind }`.
+- Deleting a form deletes its uploaded files too.
+
+Editing a response lets the visitor remove existing files and add new ones;
+removed files are deleted from disk. Admins see thumbnails in the responses
+table, and the CSV export contains absolute file URLs.
+
+### Repairing older file fields
+
+A file field created before photo/video support existed has a `VARCHAR(255)`
+response column and fails on submit with "Data too long for column ...". Fix it
+with:
+
+```bash
+node db/fix_file_field_columns.js
+```
+
+### Sample / test form
+
+To create a form that exercises every field type, including photo and video
+uploads, sections, "Other" free-text options and unique submissions:
+
+```bash
+node db/create_sample_form.js
+```
+
+It prints the form's URLs. Re-running it rebuilds the form from scratch and
+clears its uploads, so it is safe to use as a scratch form.
 
 ### Form URLs
 

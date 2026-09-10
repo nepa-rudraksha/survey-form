@@ -115,6 +115,10 @@ async function createFormResponseTable(formId, fields) {
       case "checkbox":
         columnDef = `\`${fieldKey}\` JSON NULL`;
         break;
+      case "file":
+        // JSON array of { name, url, mime, size, kind }
+        columnDef = `\`${fieldKey}\` JSON NULL`;
+        break;
       case "consent":
         columnDef = `\`${fieldKey}\` TINYINT(1) NULL DEFAULT 0`;
         break;

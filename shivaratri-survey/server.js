@@ -3,6 +3,10 @@ require("dotenv").config();
 
 const path = require("path");
 const crypto = require("crypto");
+const fs = require("fs");
+const fsp = require("fs/promises");
+const os = require("os");
+const { execFile } = require("child_process");
 
 const express = require("express");
 const helmet = require("helmet");
@@ -54,6 +58,13 @@ app.use(express.json({ limit: '10mb' }));
 
 // Multer for multipart/form-data (as fallback)
 const upload = multer();
+
+// Uploads live on local disk under public/uploads and are served by express.static.
+// NOTE: on Coolify (or any container host) mount a persistent volume at
+// <app>/public/uploads, otherwise uploaded media is lost on every redeploy.
+const UPLOAD_ROOT = path.join(__dirname, "public", "uploads");
+fs.mkdirSync(UPLOAD_ROOT, { recursive: true });
+
 app.use(express.static(path.join(__dirname, "public")));
 
 app.set("view engine", "ejs");
@@ -105,6 +116,283 @@ async function lookupIpLocation(ip) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+// -------------------- Media uploads (photo / video fields) --------------------
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25 MB per file
+const MAX_FILES_PER_FIELD = 5;
+const IMAGE_MAX_DIMENSION = 1920; // px, longest side
+const IMAGE_QUALITY = 82;
+const VIDEO_MAX_HEIGHT = 720;
+
+const IMAGE_MIME_EXT = {
+  "image/jpeg": "jpg",
+  "image/jpg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+  "image/heic": "heic",
+  "image/heif": "heif",
+  "image/avif": "avif",
+};
+
+const VIDEO_MIME_EXT = {
+  "video/mp4": "mp4",
+  "video/quicktime": "mov",
+  "video/webm": "webm",
+  "video/x-matroska": "mkv",
+  "video/x-m4v": "m4v",
+  "video/3gpp": "3gp",
+};
+
+// sharp is optional: if it fails to load (e.g. missing native binary on a host),
+// images are stored as uploaded instead of crashing the app.
+let sharp = null;
+try {
+  sharp = require("sharp");
+} catch (e) {
+  console.warn("sharp not available - images will be stored without resizing:", e.message);
+}
+
+// ffmpeg is optional too. When present we downscale video to 720p, which is
+// what keeps stored video small. When absent we store the original file.
+let ffmpegAvailable = false;
+execFile("ffmpeg", ["-version"], (err) => {
+  ffmpegAvailable = !err;
+  console.log(
+    ffmpegAvailable
+      ? "ffmpeg detected - uploaded video will be compressed to 720p"
+      : "ffmpeg not found - uploaded video will be stored as-is (max 25 MB)"
+  );
+});
+
+function mediaKindFromMime(mime) {
+  const m = String(mime || "").toLowerCase();
+  if (IMAGE_MIME_EXT[m] || m.startsWith("image/")) return "image";
+  if (VIDEO_MIME_EXT[m] || m.startsWith("video/")) return "video";
+  return "other";
+}
+
+function extForUpload(file, kind) {
+  const mime = String(file.mimetype || "").toLowerCase();
+  const known = kind === "image" ? IMAGE_MIME_EXT[mime] : VIDEO_MIME_EXT[mime];
+  if (known) return known;
+  const raw = path.extname(String(file.originalname || "")).replace(".", "").toLowerCase();
+  const safe = raw.replace(/[^a-z0-9]/g, "").slice(0, 8);
+  return safe || (kind === "image" ? "jpg" : "mp4");
+}
+
+// Per-field upload settings, stored in form_fields.validation_rules.
+// { accept: 'image' | 'video' | 'both', max_files: 1..5 }
+function getFileFieldSettings(field) {
+  let rules = field && field.validation_rules;
+  try {
+    if (typeof rules === "string") rules = JSON.parse(rules);
+  } catch {
+    rules = null;
+  }
+  const acceptRaw = String(rules?.accept || "both").toLowerCase();
+  const accept = ["image", "video", "both"].includes(acceptRaw) ? acceptRaw : "both";
+
+  const maxRaw = parseInt(rules?.max_files, 10);
+  const maxFiles = Number.isFinite(maxRaw)
+    ? Math.min(MAX_FILES_PER_FIELD, Math.max(1, maxRaw))
+    : 1;
+
+  return { accept, maxFiles };
+}
+
+function acceptLabel(accept) {
+  if (accept === "image") return "photo";
+  if (accept === "video") return "video";
+  return "photo or video";
+}
+
+// Stored value of a file field: JSON array of
+// { name, url, mime, size, kind }
+function parseFileList(value) {
+  if (!value) return [];
+  let parsed = value;
+  try {
+    if (typeof value === "string") parsed = JSON.parse(value);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .filter((f) => f && typeof f === "object" && typeof f.url === "string" && f.url.startsWith("/uploads/"))
+    .map((f) => ({
+      name: String(f.name || "file"),
+      url: String(f.url),
+      mime: String(f.mime || ""),
+      size: Number(f.size || 0),
+      kind: f.kind === "video" ? "video" : "image",
+    }));
+}
+
+// Resolve a stored /uploads/... URL back to a path inside UPLOAD_ROOT.
+// Returns null for anything that would escape the uploads directory.
+function uploadUrlToDiskPath(url) {
+  const u = String(url || "");
+  if (!u.startsWith("/uploads/")) return null;
+  const rel = decodeURIComponent(u.slice("/uploads/".length));
+  const abs = path.resolve(UPLOAD_ROOT, rel);
+  const root = path.resolve(UPLOAD_ROOT) + path.sep;
+  if (!abs.startsWith(root)) return null;
+  return abs;
+}
+
+async function deleteUploadByUrl(url) {
+  const abs = uploadUrlToDiskPath(url);
+  if (!abs) return;
+  try {
+    await fsp.unlink(abs);
+  } catch {
+    // Already gone (or never written) - nothing to clean up.
+  }
+}
+
+function runFfmpeg(args) {
+  return new Promise((resolve, reject) => {
+    execFile("ffmpeg", args, { timeout: 120000, maxBuffer: 1024 * 1024 }, (err) =>
+      err ? reject(err) : resolve()
+    );
+  });
+}
+
+// Shrink an image to at most IMAGE_MAX_DIMENSION on its longest side.
+// Animated GIFs are passed through untouched so they keep animating.
+async function writeImageUpload(file, destDir, baseName) {
+  const mime = String(file.mimetype || "").toLowerCase();
+  const passthrough = !sharp || mime === "image/gif";
+
+  if (passthrough) {
+    const ext = extForUpload(file, "image");
+    const abs = path.join(destDir, `${baseName}.${ext}`);
+    await fsp.writeFile(abs, file.buffer);
+    return { fileName: `${baseName}.${ext}`, mime: mime || "image/jpeg", size: file.buffer.length };
+  }
+
+  const abs = path.join(destDir, `${baseName}.jpg`);
+  const output = await sharp(file.buffer)
+    .rotate() // honour EXIF orientation before we strip metadata
+    .resize({
+      width: IMAGE_MAX_DIMENSION,
+      height: IMAGE_MAX_DIMENSION,
+      fit: "inside",
+      withoutEnlargement: true,
+    })
+    .jpeg({ quality: IMAGE_QUALITY, mozjpeg: true })
+    .toBuffer();
+
+  await fsp.writeFile(abs, output);
+  return { fileName: `${baseName}.jpg`, mime: "image/jpeg", size: output.length };
+}
+
+// Re-encode video to 720p H.264 when ffmpeg is installed; otherwise store as-is.
+async function writeVideoUpload(file, destDir, baseName) {
+  const originalExt = extForUpload(file, "video");
+
+  if (!ffmpegAvailable) {
+    const abs = path.join(destDir, `${baseName}.${originalExt}`);
+    await fsp.writeFile(abs, file.buffer);
+    return {
+      fileName: `${baseName}.${originalExt}`,
+      mime: file.mimetype || "video/mp4",
+      size: file.buffer.length,
+    };
+  }
+
+  const tmpIn = path.join(os.tmpdir(), `up_${baseName}.${originalExt}`);
+  const abs = path.join(destDir, `${baseName}.mp4`);
+
+  try {
+    await fsp.writeFile(tmpIn, file.buffer);
+    await runFfmpeg([
+      "-y",
+      "-i", tmpIn,
+      "-vf", `scale='min(iw,trunc(ih*16/9/2)*2)':'min(${VIDEO_MAX_HEIGHT},ih)':force_original_aspect_ratio=decrease:force_divisible_by=2`,
+      "-c:v", "libx264",
+      "-preset", "veryfast",
+      "-crf", "28",
+      "-c:a", "aac",
+      "-b:a", "128k",
+      "-movflags", "+faststart",
+      abs,
+    ]);
+    const stat = await fsp.stat(abs);
+    return { fileName: `${baseName}.mp4`, mime: "video/mp4", size: stat.size };
+  } catch (e) {
+    // Transcode failed (odd codec, timeout, ...) - keep the original upload.
+    console.error("ffmpeg transcode failed, storing original:", e.message);
+    await fsp.rm(abs, { force: true }).catch(() => {});
+    const fallbackAbs = path.join(destDir, `${baseName}.${originalExt}`);
+    await fsp.writeFile(fallbackAbs, file.buffer);
+    return {
+      fileName: `${baseName}.${originalExt}`,
+      mime: file.mimetype || "video/mp4",
+      size: file.buffer.length,
+    };
+  } finally {
+    await fsp.rm(tmpIn, { force: true }).catch(() => {});
+  }
+}
+
+// Persist one uploaded file and return the object stored in the JSON column.
+async function storeUploadedMedia(file, formId) {
+  const kind = mediaKindFromMime(file.mimetype);
+  if (kind === "other") return null;
+
+  const destDir = path.join(UPLOAD_ROOT, `form_${formId}`);
+  await fsp.mkdir(destDir, { recursive: true });
+
+  const baseName = crypto.randomBytes(12).toString("hex");
+  const written =
+    kind === "image"
+      ? await writeImageUpload(file, destDir, baseName)
+      : await writeVideoUpload(file, destDir, baseName);
+
+  return {
+    name: String(file.originalname || written.fileName).slice(0, 180),
+    url: `/uploads/form_${formId}/${written.fileName}`,
+    mime: written.mime,
+    size: written.size,
+    kind,
+  };
+}
+
+// Remove every uploaded file belonging to a form (used when a form is deleted).
+async function deleteFormUploadDir(formId) {
+  const dir = path.join(UPLOAD_ROOT, `form_${formId}`);
+  try {
+    await fsp.rm(dir, { recursive: true, force: true });
+  } catch (e) {
+    console.error(`Error removing uploads for form ${formId}:`, e.message);
+  }
+}
+
+const mediaUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_UPLOAD_BYTES, files: MAX_FILES_PER_FIELD * 20 },
+});
+
+// Parses multipart submissions. Upload problems (file too large, too many files)
+// are surfaced as a form error instead of a 500 so the visitor keeps their answers.
+function handleMediaUpload(req, res, next) {
+  mediaUpload.any()(req, res, (err) => {
+    if (err) {
+      if (err.code === "LIMIT_FILE_SIZE") {
+        req.uploadError = `Each file must be ${Math.round(MAX_UPLOAD_BYTES / (1024 * 1024))} MB or smaller.`;
+      } else if (err.code === "LIMIT_FILE_COUNT") {
+        req.uploadError = "Too many files were attached.";
+      } else {
+        console.error("Upload error:", err);
+        req.uploadError = "We could not read your upload. Please try again.";
+      }
+      req.files = [];
+    }
+    next();
+  });
 }
 
 // -------------------- DB --------------------
@@ -364,13 +652,50 @@ async function getHomepageNavigation() {
   return rows;
 }
 
-async function validateDynamicForm(body, fields) {
+async function validateDynamicForm(body, fields, req = null) {
   const errors = {};
   const values = { ...body };
+
+  if (req && req.uploadError) errors.__upload = req.uploadError;
 
   for (const field of fields) {
     const fieldKey = field.field_key;
     let value = body[fieldKey];
+
+    // Photo / video fields: the actual bytes live on req.files (multer), while
+    // already-stored files the visitor kept are posted back in `<key>__keep`.
+    if (field.field_type === "file") {
+      const settings = getFileFieldSettings(field);
+      const kept = parseFileList(body[`${fieldKey}__keep`]);
+      const incoming = (req?.files || []).filter((f) => f.fieldname === fieldKey);
+
+      values[`${fieldKey}__keep`] = kept;
+      values[fieldKey] = kept; // replaced with kept + newly stored files after validation
+
+      const total = kept.length + incoming.length;
+
+      if (field.required && total === 0) {
+        errors[fieldKey] = `${field.label} is required.`;
+      } else if (total > settings.maxFiles) {
+        errors[fieldKey] =
+          settings.maxFiles === 1
+            ? `Please upload only one ${acceptLabel(settings.accept)}.`
+            : `Please upload at most ${settings.maxFiles} files.`;
+      } else {
+        const rejected = incoming.find((f) => {
+          const kind = mediaKindFromMime(f.mimetype);
+          if (kind === "other") return true;
+          if (settings.accept === "image" && kind !== "image") return true;
+          if (settings.accept === "video" && kind !== "video") return true;
+          return false;
+        });
+        if (rejected) {
+          errors[fieldKey] = `Please upload a ${acceptLabel(settings.accept)} file.`;
+        }
+      }
+
+      continue;
+    }
 
     // Handle checkbox arrays
     if (field.field_type === "checkbox") {
@@ -445,6 +770,33 @@ async function validateDynamicForm(body, fields) {
   }
 
   return { errors, values };
+}
+
+// Writes uploaded media to disk and puts the final file list on `values`.
+// Called only once validation has passed, so a rejected submission never
+// leaves orphaned files behind.
+async function persistFileUploads(fields, values, req, formId) {
+  for (const field of fields) {
+    if (field.field_type !== "file") continue;
+
+    const fieldKey = field.field_key;
+    const settings = getFileFieldSettings(field);
+    const kept = parseFileList(values[`${fieldKey}__keep`]);
+    const incoming = (req?.files || []).filter((f) => f.fieldname === fieldKey);
+
+    const stored = [];
+    for (const file of incoming) {
+      if (kept.length + stored.length >= settings.maxFiles) break;
+      try {
+        const record = await storeUploadedMedia(file, formId);
+        if (record) stored.push(record);
+      } catch (e) {
+        console.error(`Error storing upload for ${fieldKey}:`, e.message);
+      }
+    }
+
+    values[fieldKey] = [...kept, ...stored];
+  }
 }
 
 function parseFieldOptions(options) {
@@ -575,6 +927,10 @@ async function createFormResponseTable(formId, fields) {
         break;
       case "consent":
         columnDef = `\`${fieldKey}\` TINYINT(1) NULL DEFAULT 0`;
+        break;
+      case "file":
+        // JSON array of { name, url, mime, size, kind }
+        columnDef = `\`${fieldKey}\` JSON NULL`;
         break;
       default:
         columnDef = `\`${fieldKey}\` VARCHAR(255) NULL`;
@@ -727,7 +1083,11 @@ app.get("/forms/:slug/edit/:key", async (req, res) => {
   const allFields = [...Object.values(fieldsBySection).flat(), ...fieldsWithoutSection];
   for (const field of allFields) {
     const value = row[field.field_key];
-    if (field.field_type === "checkbox" && value) {
+    if (field.field_type === "file") {
+      values[field.field_key] = parseFileList(value);
+    } else if (field.field_type === "consent") {
+      values[field.field_key] = value ? "yes" : "";
+    } else if (field.field_type === "checkbox" && value) {
       try {
         values[field.field_key] = typeof value === "string" ? JSON.parse(value) : value;
       } catch {
@@ -757,7 +1117,7 @@ app.get("/forms/:slug/edit/:key", async (req, res) => {
 });
 
 // Submit new dynamic form
-app.post("/forms/:slug/submit", async (req, res) => {
+app.post("/forms/:slug/submit", handleMediaUpload, async (req, res) => {
   const slug = String(req.params.slug || "").trim();
   if (!slug) return res.status(404).send("Form not found");
 
@@ -768,7 +1128,7 @@ app.post("/forms/:slug/submit", async (req, res) => {
   const allFields = [...Object.values(fieldsBySection).flat(), ...fieldsWithoutSection];
 
   const dynamicSections = await getDynamicSections('form', form.id);
-  const { errors, values } = await validateDynamicForm(req.body, allFields);
+  const { errors, values } = await validateDynamicForm(req.body, allFields, req);
 
   if (Object.keys(errors).length) {
     return res.status(422).render("dynamic_form", {
@@ -818,7 +1178,7 @@ app.post("/forms/:slug/submit", async (req, res) => {
     const uniqueFieldKey = String(form.unique_field_key || "").trim();
     if (uniqueFieldKey) {
       const uniqueField = allFields.find((f) => String(f.field_key) === uniqueFieldKey);
-      if (uniqueField && uniqueField.field_type !== "checkbox") {
+      if (uniqueField && !["checkbox", "file"].includes(uniqueField.field_type)) {
         const uniqueValue = values[uniqueFieldKey];
         const hasValue = uniqueValue !== null && uniqueValue !== undefined && String(uniqueValue).trim() !== "";
         if (hasValue) {
@@ -850,6 +1210,9 @@ app.post("/forms/:slug/submit", async (req, res) => {
     }
   }
   
+  // Validation passed - write uploaded photos/videos to disk.
+  await persistFileUploads(allFields, values, req, form.id);
+
   // Build column names and values
   const columns = ["edit_key", "utm_source", "utm_medium", "utm_campaign", "referrer", "ip_address", "user_agent"];
   const columnValues = [editKey, utm_source, utm_medium, utm_campaign, referrer, ip || null, ua || null];
@@ -862,6 +1225,11 @@ app.post("/forms/:slug/submit", async (req, res) => {
     if (field.field_type === "checkbox") {
       // Store checkbox as JSON array
       columnValues.push(JSON.stringify(Array.isArray(value) ? value : []));
+    } else if (field.field_type === "file") {
+      columnValues.push(JSON.stringify(Array.isArray(value) ? value : []));
+    } else if (field.field_type === "consent") {
+      // Stored as TINYINT(1); the form posts "yes" when ticked.
+      columnValues.push(value ? 1 : 0);
     } else {
       columnValues.push(value || null);
     }
@@ -880,6 +1248,11 @@ app.post("/forms/:slug/submit", async (req, res) => {
     await pool.execute(sql, columnValues);
   } catch (e) {
     console.error("Error inserting response:", e);
+    // The response was never saved, so don't leave its uploads on disk.
+    for (const field of allFields) {
+      if (field.field_type !== "file") continue;
+      for (const f of values[field.field_key] || []) await deleteUploadByUrl(f.url);
+    }
     return res.status(500).send("Server error");
   }
 
@@ -895,7 +1268,7 @@ app.post("/forms/:slug/submit", async (req, res) => {
 });
 
 // Update existing dynamic form response
-app.post("/forms/:slug/update/:key", async (req, res) => {
+app.post("/forms/:slug/update/:key", handleMediaUpload, async (req, res) => {
   const slug = String(req.params.slug || "").trim();
   const key = String(req.params.key || "").trim();
   if (!slug || !key) return res.status(404).send("Not found");
@@ -905,16 +1278,17 @@ app.post("/forms/:slug/update/:key", async (req, res) => {
 
   const tableName = getFormResponseTableName(form.id);
   const [rows] = await pool.execute(
-    `SELECT id FROM \`${tableName}\` WHERE edit_key = ? LIMIT 1`,
+    `SELECT * FROM \`${tableName}\` WHERE edit_key = ? LIMIT 1`,
     [key]
   );
   if (!rows.length) return res.status(404).send("Not found");
+  const existingRow = rows[0];
 
   const { sections, fieldsBySection, fieldsWithoutSection } = await getFormFieldsBySection(form.id);
   const allFields = [...Object.values(fieldsBySection).flat(), ...fieldsWithoutSection];
 
   const dynamicSections = await getDynamicSections('form', form.id);
-  const { errors, values } = await validateDynamicForm(req.body, allFields);
+  const { errors, values } = await validateDynamicForm(req.body, allFields, req);
 
   if (Object.keys(errors).length) {
     return res.status(422).render("dynamic_form", {
@@ -935,7 +1309,7 @@ app.post("/forms/:slug/update/:key", async (req, res) => {
     const uniqueFieldKey = String(form.unique_field_key || "").trim();
     if (uniqueFieldKey) {
       const uniqueField = allFields.find((f) => String(f.field_key) === uniqueFieldKey);
-      if (uniqueField && uniqueField.field_type !== "checkbox") {
+      if (uniqueField && !["checkbox", "file"].includes(uniqueField.field_type)) {
         const uniqueValue = values[uniqueFieldKey];
         const hasValue = uniqueValue !== null && uniqueValue !== undefined && String(uniqueValue).trim() !== "";
         if (hasValue) {
@@ -974,6 +1348,19 @@ app.post("/forms/:slug/update/:key", async (req, res) => {
   const utm_campaign = (req.body.utm_campaign || "").slice(0, 120) || null;
   const referrer = (req.body.referrer || "").slice(0, 255) || null;
 
+  // Validation passed - write newly uploaded photos/videos to disk.
+  await persistFileUploads(allFields, values, req, form.id);
+
+  // Delete files the visitor removed while editing, so we don't leave orphans on disk.
+  for (const field of allFields) {
+    if (field.field_type !== "file") continue;
+    const previous = parseFileList(existingRow[field.field_key]);
+    const finalUrls = new Set((values[field.field_key] || []).map((f) => f.url));
+    for (const old of previous) {
+      if (!finalUrls.has(old.url)) await deleteUploadByUrl(old.url);
+    }
+  }
+
   // Build UPDATE statement
   const updateColumns = ["utm_source", "utm_medium", "utm_campaign", "referrer", "ip_address", "user_agent"];
   const updateValues = [utm_source, utm_medium, utm_campaign, referrer, ip || null, ua || null];
@@ -983,6 +1370,10 @@ app.post("/forms/:slug/update/:key", async (req, res) => {
     updateColumns.push(`\`${field.field_key}\``);
     if (field.field_type === "checkbox") {
       updateValues.push(JSON.stringify(Array.isArray(value) ? value : []));
+    } else if (field.field_type === "file") {
+      updateValues.push(JSON.stringify(Array.isArray(value) ? value : []));
+    } else if (field.field_type === "consent") {
+      updateValues.push(value ? 1 : 0);
     } else {
       updateValues.push(value || null);
     }
@@ -1678,6 +2069,7 @@ app.post("/admin/forms/save", requireAdmin, async (req, res) => {
         await pool.query(`RENAME TABLE \`${tableName}\` TO \`${tempTableName}\``);
         let migrated = false;
         let created = false;
+        let copyFailed = false;
         try {
           await createFormResponseTable(form.id, savedFields);
           created = true;
@@ -1704,13 +2096,25 @@ app.post("/admin/forms/save", requireAdmin, async (req, res) => {
 
           if (migrateColumns.includes("edit_key")) {
             const colsSql = migrateColumns.map((c) => `\`${c}\``).join(", ");
-            await pool.query(
-              `INSERT INTO \`${tableName}\` (${colsSql}) SELECT ${colsSql} FROM \`${tempTableName}\``
-            );
-            migrated = true;
+            try {
+              await pool.query(
+                `INSERT INTO \`${tableName}\` (${colsSql}) SELECT ${colsSql} FROM \`${tempTableName}\``
+              );
+              migrated = true;
+            } catch (e) {
+              // A column whose type changed (e.g. text -> JSON for a new photo/video
+              // field) can reject the old values. Keep the old table so nothing is lost.
+              copyFailed = true;
+              console.error(
+                `Could not copy old responses into ${tableName}: ${e.message}\n` +
+                `Previous responses are preserved in ${tempTableName} - copy them across manually.`
+              );
+            }
           }
         } finally {
-          if (migrated || created) {
+          if (copyFailed) {
+            console.error(`Kept ${tempTableName} (holds the previous responses).`);
+          } else if (migrated || created) {
             await pool.query(`DROP TABLE IF EXISTS \`${tempTableName}\``);
           }
         }
@@ -1734,8 +2138,9 @@ app.post("/admin/forms/:id/delete", requireAdmin, async (req, res) => {
   if (!Number.isFinite(id)) return res.status(404).json({ error: "Not found" });
 
   try {
-    // Drop the form's response table
+    // Drop the form's response table and its uploaded media
     await dropFormResponseTable(id);
+    await deleteFormUploadDir(id);
     // Delete form and fields (cascade will handle fields)
     await pool.execute("DELETE FROM forms WHERE id = ?", [id]);
     res.json({ success: true });
@@ -1831,7 +2236,9 @@ app.get("/admin/forms/:id/responses", requireAdmin, async (req, res) => {
       const fieldData = {};
       for (const field of fields) {
         let value = row[field.field_key];
-        if (field.field_type === "checkbox" && value) {
+        if (field.field_type === "file") {
+          value = parseFileList(value);
+        } else if (field.field_type === "checkbox" && value) {
           try {
             value = typeof value === "string" ? JSON.parse(value) : value;
           } catch {
@@ -1983,7 +2390,11 @@ app.get("/admin/forms/:id/responses.csv", requireAdmin, async (req, res) => {
 
       fields.forEach((field) => {
         let value = row[field.field_key];
-        if (field.field_type === "checkbox" && value) {
+        if (field.field_type === "file") {
+          // Absolute URLs so the links stay clickable from a spreadsheet.
+          const baseUrl = `${req.protocol}://${req.get("host")}`;
+          csvRow.push(parseFileList(value).map((f) => baseUrl + f.url).join(" | "));
+        } else if (field.field_type === "checkbox" && value) {
           try {
             let arr = typeof value === "string" ? JSON.parse(value) : value;
 

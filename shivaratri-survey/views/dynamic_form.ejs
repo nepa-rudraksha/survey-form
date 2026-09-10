@@ -88,9 +88,33 @@
               const head = s.slice(0, 50).replace(/_+$/g, '');
               return head + '_ot_' + hash;
             }
+
+            // Per-field photo/video settings, stored in form_fields.validation_rules.
+            function fileFieldSettings(field) {
+              let rules = field && field.validation_rules;
+              if (typeof rules === 'string') {
+                try { rules = JSON.parse(rules); } catch (e) { rules = null; }
+              }
+              const accept = ['image', 'video', 'both'].indexOf(rules && rules.accept) >= 0 ? rules.accept : 'both';
+              const maxRaw = parseInt(rules && rules.max_files, 10);
+              const maxFiles = isNaN(maxRaw) ? 1 : Math.min(5, Math.max(1, maxRaw));
+              return { accept: accept, maxFiles: maxFiles };
+            }
+
+            const allRenderedFields = [].concat(
+              Object.keys(fieldsBySection || {}).reduce(function (acc, k) { return acc.concat(fieldsBySection[k] || []); }, []),
+              fieldsWithoutSection || []
+            );
+            const hasFileField = allRenderedFields.some(function (f) { return f && f.field_type === 'file'; });
           %>
 
-          <form action="<%= pageMode === 'edit' ? ('/forms/' + form.slug + '/update/' + editKey) : ('/forms/' + form.slug + '/submit') %>" method="POST" class="mt-8 space-y-6" id="surveyForm">
+          <% if (errors.__upload) { %>
+            <div class="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <%= errors.__upload %>
+            </div>
+          <% } %>
+
+          <form action="<%= pageMode === 'edit' ? ('/forms/' + form.slug + '/update/' + editKey) : ('/forms/' + form.slug + '/submit') %>" method="POST" <% if (hasFileField) { %>enctype="multipart/form-data"<% } %> class="mt-8 space-y-6" id="surveyForm">
             <input type="hidden" name="utm_source" id="utm_source" value="" />
             <input type="hidden" name="utm_medium" id="utm_medium" value="" />
             <input type="hidden" name="utm_campaign" id="utm_campaign" value="" />
@@ -137,7 +161,7 @@
                         const fieldOptions = field.options ? (typeof field.options === 'string' ? JSON.parse(field.options) : field.options) : [];
                         const otherTextKey = otherTextKeyFor(field.field_key);
                         const otherTextValue = values[otherTextKey] || '';
-                        const isFullWidth = ['textarea', 'checkbox', 'scale'].includes(field.field_type);
+                        const isFullWidth = ['textarea', 'checkbox', 'scale', 'file'].includes(field.field_type);
                   %>
                     <div class="w-full rounded-2xl border border-neutral-200 bg-white p-4">
                       <label class="block text-sm font-semibold text-neutral-800 mb-2">
@@ -350,6 +374,56 @@
                         <% if (errors[field.field_key]) { %>
                           <p class="mt-2 text-sm text-red-600"><%= errors[field.field_key] %></p>
                         <% } %>
+
+                      <% } else if (field.field_type === 'file') { %>
+                        <%
+                          const fileSettings = fileFieldSettings(field);
+                          const existingFiles = Array.isArray(fieldValue) ? fieldValue : [];
+                          const acceptAttr =
+                            fileSettings.accept === 'image' ? 'image/*' :
+                            fileSettings.accept === 'video' ? 'video/*' : 'image/*,video/*';
+                          const acceptWords =
+                            fileSettings.accept === 'image' ? 'Photos' :
+                            fileSettings.accept === 'video' ? 'Videos' : 'Photos or videos';
+                        %>
+                        <div
+                          class="mt-2"
+                          data-file-field
+                          data-field-key="<%= field.field_key %>"
+                          data-accept="<%= fileSettings.accept %>"
+                          data-max-files="<%= fileSettings.maxFiles %>"
+                        >
+                          <input
+                            type="hidden"
+                            name="<%= field.field_key %>__keep"
+                            value="<%= JSON.stringify(existingFiles) %>"
+                            data-file-keep
+                          />
+
+                          <label
+                            data-file-drop
+                            class="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed <%= errors[field.field_key] ? 'border-red-300' : 'border-neutral-300' %> bg-neutral-50 px-4 py-6 text-center hover:border-primary hover:bg-primary/5"
+                          >
+                            <input
+                              type="file"
+                              name="<%= field.field_key %>"
+                              accept="<%= acceptAttr %>"
+                              <% if (fileSettings.maxFiles > 1) { %>multiple<% } %>
+                              class="hidden"
+                              data-file-input
+                            />
+                            <span class="text-sm font-semibold text-neutral-800">Tap to upload</span>
+                            <span class="text-xs text-neutral-500">
+                              <%= acceptWords %> &middot; up to <%= fileSettings.maxFiles %> file<%= fileSettings.maxFiles > 1 ? 's' : '' %> &middot; max 25 MB each
+                            </span>
+                          </label>
+
+                          <p data-file-error class="mt-2 hidden text-sm text-red-600"></p>
+                          <div data-file-list class="mt-3 grid gap-2"></div>
+                        </div>
+                        <% if (errors[field.field_key]) { %>
+                          <p class="mt-2 text-sm text-red-600"><%= errors[field.field_key] %></p>
+                        <% } %>
                       <% } %>
                     </div>
                   <% 
@@ -389,7 +463,7 @@
                       const fieldOptions = field.options ? (typeof field.options === 'string' ? JSON.parse(field.options) : field.options) : [];
                       const otherTextKey = otherTextKeyFor(field.field_key);
                       const otherTextValue = values[otherTextKey] || '';
-                      const isFullWidth = ['textarea', 'checkbox', 'scale'].includes(field.field_type);
+                      const isFullWidth = ['textarea', 'checkbox', 'scale', 'file'].includes(field.field_type);
                   %>
                     <div class="w-full rounded-2xl border border-neutral-200 bg-white p-4">
                       <label class="block text-sm font-semibold text-neutral-800 mb-2">
@@ -601,6 +675,56 @@
                           />
                           <span class="text-sm text-neutral-800 flex-1"><%= field.placeholder || 'I agree to the terms' %></span>
                         </label>
+                        <% if (errors[field.field_key]) { %>
+                          <p class="mt-2 text-sm text-red-600"><%= errors[field.field_key] %></p>
+                        <% } %>
+
+                      <% } else if (field.field_type === 'file') { %>
+                        <%
+                          const fileSettings = fileFieldSettings(field);
+                          const existingFiles = Array.isArray(fieldValue) ? fieldValue : [];
+                          const acceptAttr =
+                            fileSettings.accept === 'image' ? 'image/*' :
+                            fileSettings.accept === 'video' ? 'video/*' : 'image/*,video/*';
+                          const acceptWords =
+                            fileSettings.accept === 'image' ? 'Photos' :
+                            fileSettings.accept === 'video' ? 'Videos' : 'Photos or videos';
+                        %>
+                        <div
+                          class="mt-2"
+                          data-file-field
+                          data-field-key="<%= field.field_key %>"
+                          data-accept="<%= fileSettings.accept %>"
+                          data-max-files="<%= fileSettings.maxFiles %>"
+                        >
+                          <input
+                            type="hidden"
+                            name="<%= field.field_key %>__keep"
+                            value="<%= JSON.stringify(existingFiles) %>"
+                            data-file-keep
+                          />
+
+                          <label
+                            data-file-drop
+                            class="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed <%= errors[field.field_key] ? 'border-red-300' : 'border-neutral-300' %> bg-neutral-50 px-4 py-6 text-center hover:border-primary hover:bg-primary/5"
+                          >
+                            <input
+                              type="file"
+                              name="<%= field.field_key %>"
+                              accept="<%= acceptAttr %>"
+                              <% if (fileSettings.maxFiles > 1) { %>multiple<% } %>
+                              class="hidden"
+                              data-file-input
+                            />
+                            <span class="text-sm font-semibold text-neutral-800">Tap to upload</span>
+                            <span class="text-xs text-neutral-500">
+                              <%= acceptWords %> &middot; up to <%= fileSettings.maxFiles %> file<%= fileSettings.maxFiles > 1 ? 's' : '' %> &middot; max 25 MB each
+                            </span>
+                          </label>
+
+                          <p data-file-error class="mt-2 hidden text-sm text-red-600"></p>
+                          <div data-file-list class="mt-3 grid gap-2"></div>
+                        </div>
                         <% if (errors[field.field_key]) { %>
                           <p class="mt-2 text-sm text-red-600"><%= errors[field.field_key] %></p>
                         <% } %>
@@ -908,5 +1032,208 @@
         <% }); %>
       </div>
     <% } %>
+
+    <!-- Photo / video upload fields -->
+    <script>
+      (function () {
+        const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+        const COMPRESS_ABOVE_BYTES = 900 * 1024; // leave already-small photos alone
+        const CLIENT_MAX_DIMENSION = 1600;
+        const CLIENT_QUALITY = 0.8;
+
+        function humanSize(bytes) {
+          const n = Number(bytes || 0);
+          if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + ' MB';
+          if (n >= 1024) return Math.round(n / 1024) + ' KB';
+          return n + ' B';
+        }
+
+        function kindOf(file) {
+          const type = String(file.type || '').toLowerCase();
+          if (type.indexOf('image/') === 0) return 'image';
+          if (type.indexOf('video/') === 0) return 'video';
+          return 'other';
+        }
+
+        // Downscale big photos in the browser so uploads stay fast on mobile data.
+        // The server resizes again, so failure here is never fatal.
+        function compressImage(file) {
+          return new Promise(function (resolve) {
+            if (kindOf(file) !== 'image' || file.size <= COMPRESS_ABOVE_BYTES || file.type === 'image/gif') {
+              return resolve(file);
+            }
+            const url = URL.createObjectURL(file);
+            const img = new Image();
+            img.onload = function () {
+              try {
+                const scale = Math.min(1, CLIENT_MAX_DIMENSION / Math.max(img.width, img.height));
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.round(img.width * scale);
+                canvas.height = Math.round(img.height * scale);
+                canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                canvas.toBlob(function (blob) {
+                  URL.revokeObjectURL(url);
+                  if (!blob || blob.size >= file.size) return resolve(file);
+                  const name = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+                  resolve(new File([blob], name, { type: 'image/jpeg', lastModified: Date.now() }));
+                }, 'image/jpeg', CLIENT_QUALITY);
+              } catch (e) {
+                URL.revokeObjectURL(url);
+                resolve(file);
+              }
+            };
+            img.onerror = function () {
+              URL.revokeObjectURL(url);
+              resolve(file);
+            };
+            img.src = url;
+          });
+        }
+
+        function setupField(wrap) {
+          const input = wrap.querySelector('[data-file-input]');
+          const keepInput = wrap.querySelector('[data-file-keep]');
+          const list = wrap.querySelector('[data-file-list]');
+          const errorEl = wrap.querySelector('[data-file-error]');
+          const maxFiles = parseInt(wrap.dataset.maxFiles, 10) || 1;
+          const accept = wrap.dataset.accept || 'both';
+
+          let kept = [];
+          try {
+            kept = JSON.parse(keepInput.value || '[]');
+            if (!Array.isArray(kept)) kept = [];
+          } catch (e) {
+            kept = [];
+          }
+
+          let pending = []; // File objects chosen in this session
+
+          function showError(message) {
+            errorEl.textContent = message || '';
+            errorEl.classList.toggle('hidden', !message);
+          }
+
+          function syncInput() {
+            const dt = new DataTransfer();
+            pending.forEach(function (f) { dt.items.add(f); });
+            input.files = dt.files;
+            keepInput.value = JSON.stringify(kept);
+          }
+
+          function tile(inner) {
+            const row = document.createElement('div');
+            row.className = 'flex items-center gap-3 rounded-xl border border-neutral-200 bg-white p-2';
+            row.appendChild(inner);
+            return row;
+          }
+
+          function thumb(src, isVideo) {
+            const el = document.createElement(isVideo ? 'video' : 'img');
+            el.src = src;
+            el.className = 'h-14 w-14 shrink-0 rounded-lg object-cover bg-neutral-100';
+            if (isVideo) {
+              el.muted = true;
+              el.playsInline = true;
+            }
+            return el;
+          }
+
+          function render() {
+            list.innerHTML = '';
+
+            kept.forEach(function (f, i) {
+              const inner = document.createElement('div');
+              inner.className = 'flex w-full items-center gap-3';
+              inner.appendChild(thumb(f.url, f.kind === 'video'));
+
+              const meta = document.createElement('div');
+              meta.className = 'min-w-0 flex-1';
+              meta.innerHTML =
+                '<p class="truncate text-sm font-medium text-neutral-800"></p>' +
+                '<p class="text-xs text-neutral-500">' + humanSize(f.size) + ' &middot; uploaded</p>';
+              meta.querySelector('p').textContent = f.name;
+              inner.appendChild(meta);
+
+              const btn = document.createElement('button');
+              btn.type = 'button';
+              btn.className = 'shrink-0 rounded-lg px-3 py-1 text-xs font-semibold text-red-600 hover:bg-red-50';
+              btn.textContent = 'Remove';
+              btn.addEventListener('click', function () {
+                kept.splice(i, 1);
+                syncInput();
+                render();
+              });
+              inner.appendChild(btn);
+
+              list.appendChild(tile(inner));
+            });
+
+            pending.forEach(function (f, i) {
+              const inner = document.createElement('div');
+              inner.className = 'flex w-full items-center gap-3';
+              const url = URL.createObjectURL(f);
+              inner.appendChild(thumb(url, kindOf(f) === 'video'));
+
+              const meta = document.createElement('div');
+              meta.className = 'min-w-0 flex-1';
+              meta.innerHTML =
+                '<p class="truncate text-sm font-medium text-neutral-800"></p>' +
+                '<p class="text-xs text-neutral-500">' + humanSize(f.size) + ' &middot; ready to upload</p>';
+              meta.querySelector('p').textContent = f.name;
+              inner.appendChild(meta);
+
+              const btn = document.createElement('button');
+              btn.type = 'button';
+              btn.className = 'shrink-0 rounded-lg px-3 py-1 text-xs font-semibold text-red-600 hover:bg-red-50';
+              btn.textContent = 'Remove';
+              btn.addEventListener('click', function () {
+                pending.splice(i, 1);
+                syncInput();
+                render();
+              });
+              inner.appendChild(btn);
+
+              list.appendChild(tile(inner));
+            });
+          }
+
+          input.addEventListener('change', async function () {
+            const chosen = Array.from(input.files || []);
+            if (!chosen.length) return;
+
+            showError('');
+            const accepted = [];
+
+            for (const file of chosen) {
+              const kind = kindOf(file);
+              if (kind === 'other' || (accept === 'image' && kind !== 'image') || (accept === 'video' && kind !== 'video')) {
+                showError('That file type is not accepted here.');
+                continue;
+              }
+              if (kept.length + pending.length + accepted.length >= maxFiles) {
+                showError(maxFiles === 1 ? 'Only one file can be uploaded here.' : 'You can upload at most ' + maxFiles + ' files.');
+                break;
+              }
+
+              const processed = await compressImage(file);
+              if (processed.size > MAX_UPLOAD_BYTES) {
+                showError('"' + file.name + '" is ' + humanSize(processed.size) + '. The limit is 25 MB.');
+                continue;
+              }
+              accepted.push(processed);
+            }
+
+            pending = pending.concat(accepted);
+            syncInput();
+            render();
+          });
+
+          syncInput();
+          render();
+        }
+
+        document.querySelectorAll('[data-file-field]').forEach(setupField);
+      })();
+    </script>
   </body>
 </html>

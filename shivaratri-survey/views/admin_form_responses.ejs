@@ -205,9 +205,28 @@
                           displayValue = '-';
                         }
                       %>
-                      <div class="max-w-[200px] break-words">
-                        <span class="text-sm text-neutral-900"><%= displayValue %></span>
-                      </div>
+                      <% if (field.field_type === 'file') { %>
+                        <% const files = Array.isArray(value) ? value : []; %>
+                        <% if (!files.length) { %>
+                          <span class="text-sm text-neutral-400">-</span>
+                        <% } else { %>
+                          <div class="flex flex-wrap gap-2 max-w-[220px]">
+                            <% files.forEach(function(f) { %>
+                              <a href="<%= f.url %>" target="_blank" rel="noopener" title="<%= f.name %>" class="block">
+                                <% if (f.kind === 'video') { %>
+                                  <video src="<%= f.url %>" muted playsinline class="h-16 w-16 rounded-lg border border-neutral-200 object-cover bg-neutral-100"></video>
+                                <% } else { %>
+                                  <img src="<%= f.url %>" alt="<%= f.name %>" class="h-16 w-16 rounded-lg border border-neutral-200 object-cover bg-neutral-100" />
+                                <% } %>
+                              </a>
+                            <% }); %>
+                          </div>
+                        <% } %>
+                      <% } else { %>
+                        <div class="max-w-[200px] break-words">
+                          <span class="text-sm text-neutral-900"><%= displayValue %></span>
+                        </div>
+                      <% } %>
                     </td>
                   <% }); %>
                   <td class="px-4 py-4">
